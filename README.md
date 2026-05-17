@@ -245,6 +245,19 @@ fetched sitemap URL, and extracted page URL. Invalid sitemap content and failed
 downloads are counted and skipped without failing the whole Spark partition.
 Timed-out downloads use the same retry/backoff path as other failed downloads.
 
+Stream downloaded sitemap page URLs into Kafka with Scala CLI:
+
+```bash
+scala-cli run scripts/StreamDownloadedSitemapUrlsToKafka.scala -- target/downloaded-sitemap-links page-urls localhost:9092 --batch-size 5000
+```
+
+The Kafka loader recursively reads `*.sitemap-links.tsv` files and publishes
+the third TSV field as one JSON message value per Kafka record, for example
+`{"url":"https://example.com/page"}`. It waits for acknowledgements after each
+configured send batch and also sets Kafka producer batching options such as
+`batch.size`, `linger.ms`, and `compression.type`; run the script with `--help`
+to see all options.
+
 ## How The Robots Pipeline Works
 
 `CommonCrawlRobotsPipeline` is the main data pipeline behind the application.
@@ -352,7 +365,13 @@ sbt -Dsbt.batch=true scalafmtAll
 Refresh the vendored country suffix TSV from IANA with Scala CLI:
 
 ```bash
-scala-cli run scripts/extract_prefixes.scala
+scala-cli run scripts/ExtractPrefixes.scala
+```
+
+Stream downloaded sitemap page URLs into Kafka with Scala CLI:
+
+```bash
+scala-cli run scripts/StreamDownloadedSitemapUrlsToKafka.scala -- target/downloaded-sitemap-links page-urls localhost:9092 --batch-size 5000
 ```
 
 Build and run the production image:
@@ -393,8 +412,11 @@ docker run --rm cc-robots-download-spark
   indexes, and writes extracted page links.
 - `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
   suffix database for the sitemap filter.
-- `scripts/extract_prefixes.scala`: Scala CLI helper that refreshes the
+- `scripts/ExtractPrefixes.scala`: Scala CLI helper that refreshes the
   vendored country suffix database from IANA root-zone metadata.
+- `scripts/StreamDownloadedSitemapUrlsToKafka.scala`: Scala CLI helper that
+  streams downloaded sitemap page URLs into a Kafka topic with batched producer
+  sends.
 - `.devcontainer/Dockerfile`: development image with JDK 21, Scala tools, JDK
   sources for Metals navigation, and a minimal Spark home.
 - `.devcontainer/post-start.sh`: idempotent startup repair and tool setup.
