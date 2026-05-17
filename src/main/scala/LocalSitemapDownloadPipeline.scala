@@ -333,9 +333,11 @@ object LocalSitemapDownloadPipeline {
       fetchedSitemapUrl: String,
       pageUrl: String
   ): String =
-    Vector(seedSitemapUrl, fetchedSitemapUrl, pageUrl).map(tsvField).mkString(
-      "\t"
-    )
+    Vector(seedSitemapUrl, fetchedSitemapUrl, pageUrl)
+      .map(tsvField)
+      .mkString(
+        "\t"
+      )
 
   private def tsvField(value: String): String =
     value

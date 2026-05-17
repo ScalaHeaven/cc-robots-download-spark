@@ -1,5 +1,7 @@
 class LocalSitemapDownloadPipelineSuite extends munit.FunSuite {
-  test("formats downloaded sitemap links without source host or scheme columns") {
+  test(
+    "formats downloaded sitemap links without source host or scheme columns"
+  ) {
     val expected = Vector(
       "https://example.com/sitemap_index.xml",
       "https://example.com/post-sitemap.xml",
