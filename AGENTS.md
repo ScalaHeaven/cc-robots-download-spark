@@ -42,10 +42,13 @@ just application code.
   `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses valid
   robots.txt payloads, and writes extracted `Sitemap:` links to per-archive TSV
   files.
+- `src/main/scala/LocalRobotsSitemapsPipeline.scala`: recursively reads locally
+  saved robots.txt files, parses valid payloads with Spark, and writes extracted
+  `Sitemap:` links to per-partition TSV files.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  subcommand.
+  and `local-sitemaps` subcommands.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[10,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
@@ -76,6 +79,7 @@ sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
+sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true assembly
 docker build -t spark-scala3-cluster-devcontainer .
 docker run --rm spark-scala3-cluster-devcontainer
@@ -269,9 +273,11 @@ The repository currently supports:
 - streaming listed robotstxt WARC archives in parallel with Spark and sttp
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
+- extracting `Sitemap:` links from locally saved robots.txt payload files
 - starting one local Spark master and 50 local Spark workers by default
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
+- writing locally extracted sitemap links as per-partition TSV files
 - producing a fat JAR with `sbt-assembly`
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals

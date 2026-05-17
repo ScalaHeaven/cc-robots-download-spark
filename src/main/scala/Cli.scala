@@ -8,6 +8,7 @@ final case class JobConfig(
 enum PipelineMode:
   case Robots
   case Sitemaps
+  case LocalSitemaps
 
 enum CliCommand:
   case Run(config: JobConfig)
@@ -43,6 +44,13 @@ object Cli {
           DefaultSitemapsOutputPath,
           PipelineMode.Sitemaps
         )
+      case "local-sitemaps" :: remaining =>
+        parseRunConfig(
+          remaining,
+          DefaultSitemapsOutputPath,
+          PipelineMode.LocalSitemaps,
+          defaultInputPath = DefaultOutputPath
+        )
       case pathsUrl :: outputPath :: Nil =>
         Right(
           CliCommand.Run(
@@ -67,18 +75,25 @@ object Cli {
   private def parseRunConfig(
       args: List[String],
       defaultOutputPath: String,
-      pipeline: PipelineMode
+      pipeline: PipelineMode,
+      defaultInputPath: String = DefaultPathsUrl
   ): Either[String, CliCommand] =
     args match {
       case Nil =>
         Right(
           CliCommand.Run(
             JobConfig(
-              DefaultPathsUrl,
+              defaultInputPath,
               defaultOutputPath,
               DefaultMaster,
               pipeline
             )
+          )
+        )
+      case inputPath :: Nil =>
+        Right(
+          CliCommand.Run(
+            JobConfig(inputPath, defaultOutputPath, DefaultMaster, pipeline)
           )
         )
       case pathsUrl :: outputPath :: Nil =>
@@ -100,9 +115,11 @@ object Cli {
        |  sbt "run [paths_gz_url] [output_dir] [spark_master]"
        |  sbt "run robots [paths_gz_url] [output_dir] [spark_master]"
        |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master]"
+       |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
        |
        |Defaults:
        |  paths_gz_url          $DefaultPathsUrl
+       |  robots_dir            $DefaultOutputPath
        |  robots output_dir     $DefaultOutputPath
        |  sitemaps output_dir   $DefaultSitemapsOutputPath
        |  spark_master          $DefaultMaster

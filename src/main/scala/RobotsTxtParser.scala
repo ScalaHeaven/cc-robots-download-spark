@@ -1,3 +1,4 @@
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 final case class RobotsTxt(
@@ -44,6 +45,9 @@ final case class RobotsRequestRate(requests: Int, seconds: Int)
 final case class RobotsParseWarning(lineNumber: Int, message: String)
 
 object RobotsTxtParser {
+  def parse(content: Array[Byte]): RobotsTxt =
+    parse(new String(content, StandardCharsets.UTF_8))
+
   def parse(content: String): RobotsTxt = {
     val builder = ParserBuilder()
 
@@ -55,6 +59,9 @@ object RobotsTxtParser {
   }
 
   def isValid(content: String): Boolean =
+    parse(content).isValid
+
+  def isValid(content: Array[Byte]): Boolean =
     parse(content).isValid
 
   private def parseLine(

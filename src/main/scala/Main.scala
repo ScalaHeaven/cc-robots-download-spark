@@ -24,6 +24,8 @@ object Main {
               CommonCrawlRobotsPipeline.run(spark, config)
             case PipelineMode.Sitemaps =>
               CommonCrawlSitemapsPipeline.run(spark, config)
+            case PipelineMode.LocalSitemaps =>
+              LocalRobotsSitemapsPipeline.run(spark, config)
           }
         } finally {
           spark.stop()

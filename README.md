@@ -37,6 +37,16 @@ To extract sitemap links from parsed robots.txt files instead:
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 ```
 
+To extract sitemap links from robots.txt files that were already downloaded
+locally:
+
+```bash
+sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
+```
+
+When the output path is omitted, `local-sitemaps` writes to
+`target/commoncrawl-sitemaps`.
+
 The app also accepts a sibling `wat.paths.gz` URL and resolves it to
 `robotstxt.paths.gz` before downloading:
 
@@ -61,8 +71,11 @@ spark_master local-cluster[10,1,200]
 ```
 
 The default command saves valid robots.txt files. Prefix arguments with
-`sitemaps` to run the sitemap-link pipeline instead; its default output
-directory is `target/commoncrawl-sitemaps`.
+`sitemaps` to run the WARC-backed sitemap-link pipeline instead. Prefix
+arguments with `local-sitemaps` to parse an existing local robots.txt output
+directory. The default local robots input directory is
+`target/commoncrawl-robots`, and the default sitemap output directory is
+`target/commoncrawl-sitemaps`.
 
 `local-cluster[10,1,200]` starts one local standalone master and 10 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -107,6 +120,16 @@ Each row contains four tab-separated fields: source archive path, WARC capture
 date, robots.txt URL, and sitemap URL. Archive-level files avoid concurrent
 Spark workers writing to the same output file. Per-archive sitemap files are
 replaced on rerun and removed when an archive produces no sitemap links.
+
+The local sitemap-link pipeline writes one TSV file per Spark partition:
+
+```text
+target/commoncrawl-sitemaps/part-00000.sitemaps.tsv
+```
+
+Each local row contains four tab-separated fields: robots.txt file path,
+robots.txt host directory, URI scheme inferred from the file name, and sitemap
+URL. Local partition files are replaced on rerun.
 
 ## How The Robots Pipeline Works
 
@@ -169,6 +192,13 @@ logs the number of valid robots.txt files parsed, invalid files rejected, and
 sitemap links saved. The driver prints total parsed, rejected, and saved-link
 counts after Spark collects the task results.
 
+`LocalRobotsSitemapsPipeline` accepts a directory that contains already saved
+robots.txt files, such as `target/commoncrawl-robots`. The driver recursively
+lists `.txt` files, Spark parses them in bounded partitions, and valid
+robots.txt files contribute their distinct `Sitemap:` links to partition TSV
+files. Invalid local robots.txt files are counted as rejected and do not
+produce output rows.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
@@ -177,6 +207,7 @@ hit the sbt boot socket lock and fail with `ServerAlreadyBootingException`.
 ```bash
 sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run --help"
+sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
 ```
@@ -212,6 +243,8 @@ docker run --rm spark-scala3-cluster-devcontainer
   writes.
 - `src/main/scala/CommonCrawlSitemapsPipeline.scala`: Spark pipeline that parses
   valid robots.txt captures and writes extracted sitemap links as TSV rows.
+- `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
+  locally saved robots.txt files and writes extracted sitemap links as TSV rows.
 - `.devcontainer/Dockerfile`: development image with JDK 21, Scala tools, JDK
   sources for Metals navigation, and a minimal Spark home.
 - `.devcontainer/post-start.sh`: idempotent startup repair and tool setup.
