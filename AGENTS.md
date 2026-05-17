@@ -7,8 +7,9 @@ Guidance for coding agents working in this repository.
 This repository is a ready-to-open Scala 3 and Apache Spark development
 workspace for VS Code Dev Containers. It provides:
 
-- a Scala 3 sbt project with a Common Crawl robots.txt downloader that defaults
-  to a local standalone cluster with one master and 50 workers
+- a Scala 3 sbt project with Common Crawl robots.txt and sitemap-link Spark
+  pipelines that default to a local standalone cluster with one master and 50
+  workers
 - a devcontainer image with JDK 21, Node.js, Codex, Coursier, Scala CLI, sbt,
   Metals, Metals MCP, and JDK sources for Java standard library navigation
 - VS Code settings for Scala editing, formatting, and debugging
@@ -30,14 +31,21 @@ just application code.
   `sbt-scalafmt`.
 - `src/main/scala/Main.scala`: Scala 3 Spark application entry point with the
   `Main` main class.
-- `src/main/scala/CommonCrawlRobotsPipeline.scala`: streams a Common Crawl
-  `robotstxt.paths.gz` manifest with sttp, parallelizes listed
-  `robotstxt/*.warc.gz` archive streaming downloads with Spark, retries HTTP
-  downloads with backoff, parses WARC responses with jwarc, and saves robots.txt
-  payload files into the configured output folder.
+- `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
+  manifest download, archive download, retry/backoff, target filtering, and HTTP
+  body decoding helpers used by robots.txt archive pipelines.
+- `src/main/scala/CommonCrawlRobotsPipeline.scala`: parallelizes listed
+  `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses WARC
+  responses with jwarc, validates robots.txt payloads, and saves valid
+  robots.txt payload files into the configured output folder.
+- `src/main/scala/CommonCrawlSitemapsPipeline.scala`: parallelizes listed
+  `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses valid
+  robots.txt payloads, and writes extracted `Sitemap:` links to per-archive TSV
+  files.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
-  `robotstxt.paths.gz`.
+  `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
+  subcommand.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[10,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
@@ -67,6 +75,7 @@ Use these commands from the repository root:
 sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
+sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true assembly
 docker build -t spark-scala3-cluster-devcontainer .
 docker run --rm spark-scala3-cluster-devcontainer
@@ -99,7 +108,7 @@ sbt -Dsbt.batch=true scalafmtAll
 - Keep Docker layer ordering cache-friendly: copy build metadata before source
   files when dependency resolution can be cached.
 - Keep Common Crawl manifest handling aligned with the archive paths consumed by
-  `CommonCrawlRobotsPipeline`.
+  `CommonCrawlRobotsPipeline` and `CommonCrawlSitemapsPipeline`.
 - Use sttp for HTTP downloads and keep downloads streaming to files rather than
   buffering archive contents in memory. Preserve retry/backoff behavior for
   transient download failures.
@@ -259,8 +268,10 @@ The repository currently supports:
 - downloading Common Crawl `robotstxt.paths.gz` manifests
 - streaming listed robotstxt WARC archives in parallel with Spark and sttp
 - extracting robots.txt response payloads with jwarc
+- extracting `Sitemap:` links from valid parsed robots.txt payloads
 - starting one local Spark master and 50 local Spark workers by default
 - writing extracted robots.txt files grouped by target host
+- writing extracted sitemap links as per-archive TSV files
 - producing a fat JAR with `sbt-assembly`
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals

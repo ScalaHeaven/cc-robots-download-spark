@@ -19,7 +19,12 @@ object Main {
         spark.sparkContext.setLogLevel("WARN")
 
         try {
-          CommonCrawlRobotsPipeline.run(spark, config)
+          config.pipeline match {
+            case PipelineMode.Robots =>
+              CommonCrawlRobotsPipeline.run(spark, config)
+            case PipelineMode.Sitemaps =>
+              CommonCrawlSitemapsPipeline.run(spark, config)
+          }
         } finally {
           spark.stop()
         }

@@ -15,9 +15,9 @@ This repository gives you:
 
 The app streams a Common Crawl `robotstxt.paths.gz` manifest to a temporary
 file with sttp, reads the archive paths inside it, launches Spark jobs to stream
-the listed `robotstxt/*.warc.gz` archives in parallel with retry/backoff,
-extracts robots.txt response payloads, and writes the extracted text files to an
-output folder.
+the listed `robotstxt/*.warc.gz` archives in parallel with retry/backoff, and
+can either save valid robots.txt payloads or extract sitemap links from parsed
+robots.txt files.
 
 ## Quick Start
 
@@ -29,6 +29,12 @@ Inside the container:
 ```bash
 sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
+```
+
+To extract sitemap links from parsed robots.txt files instead:
+
+```bash
+sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 ```
 
 The app also accepts a sibling `wat.paths.gz` URL and resolves it to
@@ -53,6 +59,10 @@ paths_gz_url https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.p
 output_dir   target/commoncrawl-robots
 spark_master local-cluster[10,1,200]
 ```
+
+The default command saves valid robots.txt files. Prefix arguments with
+`sitemaps` to run the sitemap-link pipeline instead; its default output
+directory is `target/commoncrawl-sitemaps`.
 
 `local-cluster[10,1,200]` starts one local standalone master and 10 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -83,7 +93,20 @@ Filenames include the URI scheme, WARC capture date, and a short SHA-256 digest
 derived from the target URI, capture date, and archive path to avoid collisions.
 
 The output directory is not deleted before a run. Existing files with the same
-generated name are replaced.
+generated name are replaced, and a same-name robots.txt file is removed if a
+later run rejects that capture as invalid.
+
+The sitemap-link pipeline writes one TSV file per processed archive beneath the
+requested output directory:
+
+```text
+target/commoncrawl-sitemaps/archive-a1b2c3d4e5f60789.sitemaps.tsv
+```
+
+Each row contains four tab-separated fields: source archive path, WARC capture
+date, robots.txt URL, and sitemap URL. Archive-level files avoid concurrent
+Spark workers writing to the same output file. Per-archive sitemap files are
+replaced on rerun and removed when an archive produces no sitemap links.
 
 ## How The Robots Pipeline Works
 
@@ -132,6 +155,20 @@ results, the driver prints a run summary with total saved and rejected counts.
 If any archive failed to download or extract, the driver prints each failed
 archive and raises an exception so the overall run exits unsuccessfully.
 
+## How The Sitemaps Pipeline Works
+
+`CommonCrawlSitemapsPipeline` reuses the same Common Crawl manifest handling,
+archive download, retry/backoff, response decoding, and WARC parsing behavior as
+the robots pipeline. It parses each matching `/robots.txt` response with
+`RobotsTxtParser`; valid captures contribute their `Sitemap:` links, while
+invalid captures are counted as rejected and do not produce output rows.
+
+Each archive task writes its sitemap links to a deterministic
+`archive-<hash>.sitemaps.tsv` file under the configured output directory and
+logs the number of valid robots.txt files parsed, invalid files rejected, and
+sitemap links saved. The driver prints total parsed, rejected, and saved-link
+counts after Spark collects the task results.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
@@ -167,9 +204,14 @@ docker run --rm spark-scala3-cluster-devcontainer
 - `src/main/scala/SparkSessionFactory.scala`: Spark session construction,
   local-cluster driver binding, executor memory, Java module options, and
   Scala library classpath handling for executor RPC serialization.
-- `src/main/scala/CommonCrawlRobotsPipeline.scala`: sttp streaming manifest
-  download, retrying Spark parallel archive download, WARC parsing, and
-  robots.txt file writes.
+- `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
+  manifest, archive download, retry/backoff, target filtering, and HTTP body
+  decoding helpers.
+- `src/main/scala/CommonCrawlRobotsPipeline.scala`: Spark parallel archive
+  extraction, WARC parsing, robots.txt validation, and valid robots.txt file
+  writes.
+- `src/main/scala/CommonCrawlSitemapsPipeline.scala`: Spark pipeline that parses
+  valid robots.txt captures and writes extracted sitemap links as TSV rows.
 - `.devcontainer/Dockerfile`: development image with JDK 21, Scala tools, JDK
   sources for Metals navigation, and a minimal Spark home.
 - `.devcontainer/post-start.sh`: idempotent startup repair and tool setup.

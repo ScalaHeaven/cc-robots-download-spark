@@ -121,7 +121,11 @@ object RobotsTxtParser {
         }
 
       case "sitemap" =>
-        builder.addSitemap(value)
+        if (value.nonEmpty) {
+          builder.addSitemap(value)
+        } else {
+          builder.warn(lineNumber, "Missing sitemap value")
+        }
 
       case _ =>
         ()
