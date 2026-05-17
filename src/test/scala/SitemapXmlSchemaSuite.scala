@@ -1,4 +1,5 @@
 import java.io.ByteArrayInputStream
+import java.net.URI
 import java.nio.charset.StandardCharsets
 
 class SitemapXmlSchemaSuite extends munit.FunSuite {
@@ -52,6 +53,28 @@ class SitemapXmlSchemaSuite extends munit.FunSuite {
 
     assert(result.isLeft)
     assert(result.left.exists(_.message.contains("Unsupported sitemap root")))
+  }
+
+  test("resolves and validates extracted loc URLs") {
+    val baseUri = URI.create("https://example.com/sitemaps/root.xml")
+
+    assertEquals(
+      SitemapXmlSchema.resolveLoc(baseUri, "https://example.com/page"),
+      Some("https://example.com/page")
+    )
+    assertEquals(
+      SitemapXmlSchema.resolveLoc(baseUri, "/page"),
+      Some("https://example.com/page")
+    )
+    assertEquals(
+      SitemapXmlSchema.resolveLoc(baseUri, "mailto:a@example.com"),
+      None
+    )
+    assertEquals(SitemapXmlSchema.resolveLoc(baseUri, "https://"), None)
+    assertEquals(
+      SitemapXmlSchema.resolveLoc(baseUri, "https://example.com/a b"),
+      None
+    )
   }
 
   private def parse(

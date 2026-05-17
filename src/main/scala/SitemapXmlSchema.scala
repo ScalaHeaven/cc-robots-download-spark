@@ -119,11 +119,24 @@ object SitemapXmlSchema {
 
   def resolveLoc(baseUri: URI, loc: String): Option[String] =
     try {
-      Some(baseUri.resolve(loc).normalize().toString)
+      val resolved = baseUri.resolve(loc).normalize()
+
+      if (isValidExtractedUrl(resolved)) {
+        Some(resolved.toString)
+      } else {
+        None
+      }
     } catch {
       case _: IllegalArgumentException =>
         None
     }
+
+  def isValidExtractedUrl(uri: URI): Boolean =
+    Option(uri.getScheme()).exists { scheme =>
+      val normalizedScheme = scheme.toLowerCase(java.util.Locale.ROOT)
+      normalizedScheme == "http" || normalizedScheme == "https"
+    } && Option(uri.getRawAuthority()).exists(_.nonEmpty) &&
+      !uri.isOpaque && !containsWhitespaceOrControl(uri.toString)
 
   private def configureSecureXmlInput(factory: XMLInputFactory): Unit = {
     setXmlProperty(factory, XMLInputFactory.SUPPORT_DTD, false)
@@ -170,4 +183,7 @@ object SitemapXmlSchema {
   private def isEntryElement(rootName: String, localName: String): Boolean =
     (rootName == "urlset" && localName == "url") ||
       (rootName == "sitemapindex" && localName == "sitemap")
+
+  private def containsWhitespaceOrControl(value: String): Boolean =
+    value.exists(character => character.isWhitespace || character.isControl)
 }
