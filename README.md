@@ -90,7 +90,7 @@ generated name are replaced.
 `CommonCrawlRobotsPipeline` is the main data pipeline behind the application.
 It takes the parsed CLI configuration, downloads the Common Crawl manifest,
 uses Spark to process each listed robots.txt WARC archive in parallel, and
-writes one text file for each robots.txt response record it finds.
+writes one text file for each valid robots.txt response record it finds.
 
 The pipeline starts by normalizing the manifest URL. A direct
 `robotstxt.paths.gz` URL is used as-is. A sibling `wat.paths.gz` URL is
@@ -116,18 +116,21 @@ so the archive stream can continue without buffering record bodies in memory.
 
 For each matching response, the HTTP body stream is decoded according to the
 record's `Content-Encoding` header. `gzip`, `x-gzip`, and `deflate` encodings
-are handled, including stacked encodings, and the decoded body is copied
-directly to the output file.
+are handled, including stacked encodings. The decoded text is parsed with
+`RobotsTxtParser`, and only captures with at least one valid user-agent group
+and no parser warnings are written to the output directory. Invalid captures
+are rejected and left off disk.
 
 Output files are grouped by lowercased target host. The file name includes the
 URI scheme, WARC capture date, and the first 16 hex characters of a SHA-256
 digest over the target URI, capture date, and source archive path. This keeps
 names readable while avoiding collisions between repeated captures.
 
-Each archive task reports the number of files it saved or the failure it hit.
-After Spark collects the task results, the driver prints a run summary. If any
-archive failed to download or extract, the driver prints each failed archive and
-raises an exception so the overall run exits unsuccessfully.
+Each archive task reports the number of valid files it saved, the number of
+invalid files it rejected, or the failure it hit. After Spark collects the task
+results, the driver prints a run summary with total saved and rejected counts.
+If any archive failed to download or extract, the driver prints each failed
+archive and raises an exception so the overall run exits unsuccessfully.
 
 ## Build And Validation
 

@@ -5,6 +5,9 @@ final case class RobotsTxt(
     sitemaps: Vector[String],
     warnings: Vector[RobotsParseWarning]
 ) {
+  def isValid: Boolean =
+    groups.nonEmpty && warnings.isEmpty
+
   def groupsFor(userAgent: String): Vector[RobotsGroup] = {
     val normalizedUserAgent = userAgent.toLowerCase(Locale.ROOT)
 
@@ -51,6 +54,9 @@ object RobotsTxtParser {
     builder.result()
   }
 
+  def isValid(content: String): Boolean =
+    parse(content).isValid
+
   private def parseLine(
       rawLine: String,
       lineNumber: Int,
@@ -82,7 +88,11 @@ object RobotsTxtParser {
   ): Unit =
     fieldName match {
       case "user-agent" =>
-        builder.addUserAgent(value)
+        if (value.nonEmpty) {
+          builder.addUserAgent(value)
+        } else {
+          builder.warn(lineNumber, "Missing user-agent value")
+        }
 
       case "allow" =>
         builder.addRule(RobotsRule.Allow(value))

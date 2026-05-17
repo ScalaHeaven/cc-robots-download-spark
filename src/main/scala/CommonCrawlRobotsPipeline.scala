@@ -19,7 +19,13 @@ import scala.util.Using
 final case class ArchiveDownloadResult(
     archivePath: String,
     savedFiles: Int,
+    rejectedFiles: Int,
     failure: String | Null
+)
+
+private final case class ArchiveExtractionResult(
+    savedFiles: Int,
+    rejectedFiles: Int
 )
 
 object CommonCrawlRobotsPipeline {
@@ -44,12 +50,14 @@ object CommonCrawlRobotsPipeline {
       .collect()
 
     val savedFiles = results.map(_.savedFiles).sum
+    val rejectedFiles = results.map(_.rejectedFiles).sum
     val failures = results.filter(_.failure != null)
 
     println(
       s"Read ${archivePaths.size} robotstxt archive paths from $manifestUrl"
     )
-    println(s"Saved $savedFiles robots.txt captures into $outputDir")
+    println(s"Saved $savedFiles valid robots.txt captures into $outputDir")
+    println(s"Rejected $rejectedFiles invalid robots.txt captures")
 
     if (failures.nonEmpty) {
       failures.foreach { failure =>
@@ -104,14 +112,25 @@ object CommonCrawlRobotsPipeline {
       withTempFile("commoncrawl-robotstxt-", ".warc.gz") { tempFile =>
         downloadToPath(archiveUri, tempFile)
 
-        val savedFiles =
+        val extractionResult =
           extractRobots(tempFile, Path.of(outputDir), archivePath)
-        ArchiveDownloadResult(archivePath, savedFiles, null)
+
+        println(
+          s"Archive $archivePath: saved ${extractionResult.savedFiles} valid robots.txt files; rejected ${extractionResult.rejectedFiles} invalid robots.txt files"
+        )
+
+        ArchiveDownloadResult(
+          archivePath,
+          extractionResult.savedFiles,
+          extractionResult.rejectedFiles,
+          null
+        )
       }
     } catch {
       case exception: Exception =>
         ArchiveDownloadResult(
           archivePath,
+          0,
           0,
           s"${exception.getClass.getSimpleName}: ${exception.getMessage}"
         )
@@ -121,8 +140,9 @@ object CommonCrawlRobotsPipeline {
       archiveFile: Path,
       outputDir: Path,
       archivePath: String
-  ): Int = {
+  ): ArchiveExtractionResult = {
     var savedFiles = 0
+    var rejectedFiles = 0
 
     Using.resource(WarcReader(archiveFile)) { reader =>
       reader.setLenient(true)
@@ -135,20 +155,28 @@ object CommonCrawlRobotsPipeline {
               robotsFileName(targetUri, response.date().toString, archivePath)
             val destination = outputDir.resolve(fileName)
 
-            Files.createDirectories(destination.getParent())
-
             val httpResponse = response.http()
 
-            Using.resource(
+            val content = Using.resource(
               decodedBodyStream(
                 httpResponse.body().stream(),
                 httpResponse.headers().first("Content-Encoding").orElse("")
               )
             ) { body =>
-              Files.copy(body, destination, StandardCopyOption.REPLACE_EXISTING)
+              new String(body.readAllBytes(), StandardCharsets.UTF_8)
             }
 
-            savedFiles += 1
+            if (isValidRobotsTxt(content)) {
+              Files.createDirectories(destination.getParent())
+              Files.writeString(
+                destination,
+                content,
+                StandardCharsets.UTF_8
+              )
+              savedFiles += 1
+            } else {
+              rejectedFiles += 1
+            }
           } else {
             response.body().consume()
           }
@@ -158,7 +186,11 @@ object CommonCrawlRobotsPipeline {
       }
     }
 
-    savedFiles
+    ArchiveExtractionResult(savedFiles, rejectedFiles)
+  }
+
+  private def isValidRobotsTxt(content: String): Boolean = {
+    RobotsTxtParser.isValid(content)
   }
 
   private def archiveUriFor(archivePath: String): URI = {
