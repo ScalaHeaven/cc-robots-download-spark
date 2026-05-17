@@ -129,7 +129,7 @@ object LocalRobotsSitemapsPipeline {
     var parsedFiles = 0
     var rejectedFiles = 0
     var savedSitemapLinks = 0
-    var writer: BufferedWriter | Null = null
+    var writer = Option.empty[BufferedWriter]
 
     Files.deleteIfExists(outputFile)
 
@@ -137,12 +137,15 @@ object LocalRobotsSitemapsPipeline {
         robotFile: Path,
         sitemapUrl: String
     ): Unit = {
-      if (writer == null) {
+      val activeWriter = writer.getOrElse {
         Files.createDirectories(outputFile.getParent())
-        writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)
+        val createdWriter =
+          Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)
+        writer = Some(createdWriter)
+        createdWriter
       }
 
-      writer.nn.write(
+      activeWriter.write(
         Vector(
           robotFile.toString,
           robotsHost(robotFile),
@@ -150,7 +153,7 @@ object LocalRobotsSitemapsPipeline {
           sitemapUrl
         ).map(tsvField).mkString("\t")
       )
-      writer.nn.newLine()
+      activeWriter.newLine()
       savedSitemapLinks += 1
     }
 
@@ -170,9 +173,7 @@ object LocalRobotsSitemapsPipeline {
         }
       }
     } finally {
-      if (writer != null) {
-        writer.nn.close()
-      }
+      writer.foreach(_.close())
     }
 
     LocalSitemapPartitionResult(

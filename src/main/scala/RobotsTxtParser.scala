@@ -31,14 +31,9 @@ final case class RobotsGroup(
   }
 }
 
-sealed trait RobotsRule {
-  def path: String
-}
-
-object RobotsRule {
-  final case class Allow(path: String) extends RobotsRule
-  final case class Disallow(path: String) extends RobotsRule
-}
+enum RobotsRule(val path: String):
+  case Allow(override val path: String) extends RobotsRule(path)
+  case Disallow(override val path: String) extends RobotsRule(path)
 
 final case class RobotsRequestRate(requests: Int, seconds: Int)
 

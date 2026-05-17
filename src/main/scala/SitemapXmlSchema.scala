@@ -5,20 +5,14 @@ import java.nio.charset.StandardCharsets
 import javax.xml.XMLConstants
 import javax.xml.stream.{XMLInputFactory, XMLStreamConstants}
 
-sealed trait SitemapXmlDocument {
-  def locs: Vector[String]
-}
+enum SitemapXmlDocument:
+  case UrlSet(urls: Vector[String])
+  case SitemapIndex(sitemaps: Vector[String])
 
-object SitemapXmlDocument {
-  final case class UrlSet(urls: Vector[String]) extends SitemapXmlDocument {
-    override def locs: Vector[String] = urls
-  }
-
-  final case class SitemapIndex(sitemaps: Vector[String])
-      extends SitemapXmlDocument {
-    override def locs: Vector[String] = sitemaps
-  }
-}
+  def locs: Vector[String] =
+    this match
+      case UrlSet(urls)           => urls
+      case SitemapIndex(sitemaps) => sitemaps
 
 final case class SitemapXmlValidationError(message: String)
 

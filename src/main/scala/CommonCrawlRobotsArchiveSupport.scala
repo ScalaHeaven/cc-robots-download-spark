@@ -11,6 +11,7 @@ import sttp.client3.httpclient.HttpClientSyncBackend
 
 import scala.concurrent.duration.*
 import scala.io.Source
+import scala.annotation.tailrec
 import scala.util.Try
 import scala.util.Using
 
@@ -140,20 +141,16 @@ object CommonCrawlRobotsArchiveSupport {
       uri: URI,
       destination: Path,
       timeouts: DownloadTimeoutConfig
-  ): Path = {
-    var attempt = 1
-    var backoffMillis = DownloadInitialBackoffMillis
-    var lastFailure: Throwable | Null = null
-
-    while (attempt <= DownloadMaxAttempts) {
+  ): Path =
+    @tailrec
+    def attempt(attemptNumber: Int, backoffMillis: Long): Path =
       try {
-        return downloadHttpToPath(uri, destination, timeouts)
+        downloadHttpToPath(uri, destination, timeouts)
       } catch {
         case exception: Exception =>
-          lastFailure = exception
           Files.deleteIfExists(destination)
 
-          if (attempt == DownloadMaxAttempts) {
+          if (attemptNumber == DownloadMaxAttempts) {
             throw IOException(
               s"GET $uri failed after $DownloadMaxAttempts attempts",
               exception
@@ -161,16 +158,10 @@ object CommonCrawlRobotsArchiveSupport {
           }
 
           Thread.sleep(backoffMillis)
-          backoffMillis *= 2
-          attempt += 1
+          attempt(attemptNumber + 1, backoffMillis * 2)
       }
-    }
 
-    throw IOException(
-      s"GET $uri failed after $DownloadMaxAttempts attempts",
-      lastFailure
-    )
-  }
+    attempt(attemptNumber = 1, DownloadInitialBackoffMillis)
 
   private def downloadHttpToPath(
       uri: URI,

@@ -164,7 +164,7 @@ object LocalSitemapDownloadPipeline {
     var invalidSitemaps = 0
     var failedDownloads = 0
     var savedLinks = 0
-    var writer: BufferedWriter | Null = null
+    var writer = Option.empty[BufferedWriter]
 
     Files.deleteIfExists(outputFile)
 
@@ -173,15 +173,18 @@ object LocalSitemapDownloadPipeline {
         fetchedSitemapUrl: String,
         pageUrl: String
     ): Unit = {
-      if (writer == null) {
+      val activeWriter = writer.getOrElse {
         Files.createDirectories(outputFile.getParent())
-        writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)
+        val createdWriter =
+          Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)
+        writer = Some(createdWriter)
+        createdWriter
       }
 
-      writer.nn.write(
+      activeWriter.write(
         extractedLinkTsvRow(row.seedSitemapUrl, fetchedSitemapUrl, pageUrl)
       )
-      writer.nn.newLine()
+      activeWriter.newLine()
       savedLinks += 1
     }
 
@@ -204,9 +207,7 @@ object LocalSitemapDownloadPipeline {
         }
       }
     } finally {
-      if (writer != null) {
-        writer.nn.close()
-      }
+      writer.foreach(_.close())
     }
 
     LocalSitemapDownloadResult(
