@@ -1,0 +1,12 @@
+.bsp/
+**/.bsp/
+.metals/
+**/.metals/
+.scala-build/
+**/.scala-build/
+target/
+**/target/
+project/metals.sbt
+project/target/
+project/project/
+data/input/transactions.csv
