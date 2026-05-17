@@ -48,7 +48,8 @@ just application code.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  and `local-sitemaps` subcommands.
+  and `local-sitemaps` subcommands. `local-sitemaps` defaults to `local[*]`
+  instead of the standalone local cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[10,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.

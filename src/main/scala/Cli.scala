@@ -20,6 +20,7 @@ object Cli {
   val DefaultOutputPath = "target/commoncrawl-robots"
   val DefaultSitemapsOutputPath = "target/commoncrawl-sitemaps"
   val DefaultMaster = "local-cluster[10,1,200]"
+  val DefaultLocalSitemapsMaster = "local[*]"
 
   def parseArgs(args: Array[String]): Either[String, CliCommand] =
     args.toList match {
@@ -49,7 +50,8 @@ object Cli {
           remaining,
           DefaultSitemapsOutputPath,
           PipelineMode.LocalSitemaps,
-          defaultInputPath = DefaultOutputPath
+          defaultInputPath = DefaultOutputPath,
+          defaultMaster = DefaultLocalSitemapsMaster
         )
       case pathsUrl :: outputPath :: Nil =>
         Right(
@@ -76,7 +78,8 @@ object Cli {
       args: List[String],
       defaultOutputPath: String,
       pipeline: PipelineMode,
-      defaultInputPath: String = DefaultPathsUrl
+      defaultInputPath: String = DefaultPathsUrl,
+      defaultMaster: String = DefaultMaster
   ): Either[String, CliCommand] =
     args match {
       case Nil =>
@@ -85,7 +88,7 @@ object Cli {
             JobConfig(
               defaultInputPath,
               defaultOutputPath,
-              DefaultMaster,
+              defaultMaster,
               pipeline
             )
           )
@@ -93,13 +96,13 @@ object Cli {
       case inputPath :: Nil =>
         Right(
           CliCommand.Run(
-            JobConfig(inputPath, defaultOutputPath, DefaultMaster, pipeline)
+            JobConfig(inputPath, defaultOutputPath, defaultMaster, pipeline)
           )
         )
       case pathsUrl :: outputPath :: Nil =>
         Right(
           CliCommand.Run(
-            JobConfig(pathsUrl, outputPath, DefaultMaster, pipeline)
+            JobConfig(pathsUrl, outputPath, defaultMaster, pipeline)
           )
         )
       case pathsUrl :: outputPath :: master :: Nil =>
@@ -123,6 +126,7 @@ object Cli {
        |  robots output_dir     $DefaultOutputPath
        |  sitemaps output_dir   $DefaultSitemapsOutputPath
        |  spark_master          $DefaultMaster
+       |  local-sitemaps master $DefaultLocalSitemapsMaster
        |
        |Pass a Common Crawl robotstxt.paths.gz URL. A sibling wat.paths.gz URL is
        |also accepted and is resolved to robotstxt.paths.gz before downloading.

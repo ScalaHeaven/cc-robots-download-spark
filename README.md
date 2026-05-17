@@ -75,7 +75,10 @@ The default command saves valid robots.txt files. Prefix arguments with
 arguments with `local-sitemaps` to parse an existing local robots.txt output
 directory. The default local robots input directory is
 `target/commoncrawl-robots`, and the default sitemap output directory is
-`target/commoncrawl-sitemaps`.
+`target/commoncrawl-sitemaps`. Unlike the WARC-backed pipelines,
+`local-sitemaps` defaults to `local[*]` instead of `local-cluster[10,1,200]`
+to avoid starting standalone Spark master and worker JVMs for local file
+parsing.
 
 `local-cluster[10,1,200]` starts one local standalone master and 10 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
