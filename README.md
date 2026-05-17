@@ -231,16 +231,17 @@ target/filtered-sitemaps/country/anguilla/part-00000.sitemaps.tsv
 
 Rows may come from `local-sitemaps` or `filter-sitemaps`; the fourth TSV field
 is treated as the seed sitemap URL. Each seed sitemap is downloaded to a
-temporary file with sttp, gzip-compressed sitemap files are decoded, and XML is
-validated as either a Sitemap `urlset` or `sitemapindex`. Sitemap indexes are
-followed recursively, and URL-set links are written to partition files:
+temporary file with sttp, gzip-compressed sitemap files are decoded, and the
+content is validated as a Sitemap `urlset`, Sitemap `sitemapindex`, plain text
+URL list, RSS feed, or Atom feed. Sitemap indexes are followed recursively, and
+URL-set, plain text, RSS, and Atom links are written to partition files:
 
 ```text
 target/downloaded-sitemap-links/part-00000.sitemap-links.tsv
 ```
 
 Each extracted row contains three tab-separated fields: seed sitemap URL,
-fetched sitemap URL, and extracted page URL. Invalid sitemap XML and failed
+fetched sitemap URL, and extracted page URL. Invalid sitemap content and failed
 downloads are counted and skipped without failing the whole Spark partition.
 Timed-out downloads use the same retry/backoff path as other failed downloads.
 

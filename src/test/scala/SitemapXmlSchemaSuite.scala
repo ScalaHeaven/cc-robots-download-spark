@@ -48,11 +48,81 @@ class SitemapXmlSchemaSuite extends munit.FunSuite {
     )
   }
 
+  test("parses plain text sitemap URL lists") {
+    val text =
+      """https://example.com/a
+        |https://example.com/b
+        |https://example.com/a
+        |""".stripMargin
+
+    assertEquals(
+      parse(text),
+      Right(
+        SitemapXmlDocument.UrlSet(
+          Vector("https://example.com/a", "https://example.com/b")
+        )
+      )
+    )
+  }
+
+  test("parses RSS feed item links as sitemap URLs") {
+    val xml =
+      """<rss version="2.0">
+        |  <channel>
+        |    <title>Example</title>
+        |    <link>https://example.com/</link>
+        |    <item><link>https://example.com/a</link></item>
+        |    <item><link>https://example.com/b</link></item>
+        |  </channel>
+        |</rss>
+        |""".stripMargin
+
+    assertEquals(
+      parse(xml),
+      Right(
+        SitemapXmlDocument.UrlSet(
+          Vector("https://example.com/a", "https://example.com/b")
+        )
+      )
+    )
+  }
+
+  test("parses Atom feed alternate links as sitemap URLs") {
+    val xml =
+      """<feed xmlns="http://www.w3.org/2005/Atom">
+        |  <title>Example</title>
+        |  <entry>
+        |    <link href="https://example.com/a" />
+        |    <link rel="self" href="https://example.com/feed-entry-a" />
+        |  </entry>
+        |  <entry>
+        |    <link rel="alternate" href="https://example.com/b" />
+        |  </entry>
+        |</feed>
+        |""".stripMargin
+
+    assertEquals(
+      parse(xml),
+      Right(
+        SitemapXmlDocument.UrlSet(
+          Vector("https://example.com/a", "https://example.com/b")
+        )
+      )
+    )
+  }
+
   test("rejects unsupported root element") {
     val result = parse("<html><body>not a sitemap</body></html>")
 
     assert(result.isLeft)
     assert(result.left.exists(_.message.contains("Unsupported sitemap root")))
+  }
+
+  test("rejects malformed plain text sitemap rows") {
+    val result = parse("https://example.com/a\nnot a url\n")
+
+    assert(result.isLeft)
+    assert(result.left.exists(_.message.contains("Invalid text sitemap URL")))
   }
 
   test("resolves and validates extracted loc URLs") {

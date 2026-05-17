@@ -1,5 +1,6 @@
-import java.io.InputStream
+import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
+import java.nio.charset.StandardCharsets
 
 import javax.xml.XMLConstants
 import javax.xml.stream.{XMLInputFactory, XMLStreamConstants}
@@ -23,10 +24,23 @@ final case class SitemapXmlValidationError(message: String)
 
 object SitemapXmlSchema {
   private val SitemapNamespace = "http://www.sitemaps.org/schemas/sitemap/0.9"
+  private val AtomNamespace = "http://www.w3.org/2005/Atom"
 
   def parse(
       input: InputStream
-  ): Either[SitemapXmlValidationError, SitemapXmlDocument] =
+  ): Either[SitemapXmlValidationError, SitemapXmlDocument] = {
+    val bytes = input.readAllBytes()
+
+    if (looksLikeXml(bytes)) {
+      parseXml(ByteArrayInputStream(bytes))
+    } else {
+      parseTextSitemap(bytes)
+    }
+  }
+
+  private def parseXml(
+      input: InputStream
+  ): Either[SitemapXmlValidationError, SitemapXmlDocument] = {
     val factory = XMLInputFactory.newFactory()
     configureSecureXmlInput(factory)
 
@@ -59,7 +73,17 @@ object SitemapXmlSchema {
             } else if (isEntryElement(rootName, localName)) {
               currentEntry = localName
             } else if (
-              localName == "loc" && currentEntry != null &&
+              rootName == "feed" && currentEntry == "entry" &&
+              localName == "link"
+            ) {
+              atomLinkHref(
+                reader.getAttributeValue(null, "rel"),
+                reader.getAttributeValue(null, "href")
+              ).foreach { href =>
+                locs :+= href
+              }
+            } else if (
+              isTextLocElement(rootName, localName) && currentEntry != null &&
               elementStack.dropRight(1).lastOption.contains(currentEntry)
             ) {
               insideLoc = true
@@ -74,7 +98,7 @@ object SitemapXmlSchema {
           case XMLStreamConstants.END_ELEMENT =>
             val localName = reader.getLocalName()
 
-            if (localName == "loc" && currentEntry != null) {
+            if (isTextLocElement(rootName, localName) && currentEntry != null) {
               val loc = currentLoc.toString().trim
               if (loc.nonEmpty) {
                 locs :+= loc
@@ -97,6 +121,8 @@ object SitemapXmlSchema {
           Right(SitemapXmlDocument.UrlSet(locs.distinct))
         case Some("sitemapindex") if locs.nonEmpty =>
           Right(SitemapXmlDocument.SitemapIndex(locs.distinct))
+        case Some("rss" | "feed") if locs.nonEmpty =>
+          Right(SitemapXmlDocument.UrlSet(locs.distinct))
         case Some(name) =>
           Left(
             SitemapXmlValidationError(
@@ -116,6 +142,7 @@ object SitemapXmlSchema {
     } finally {
       reader.close()
     }
+  }
 
   def resolveLoc(baseUri: URI, loc: String): Option[String] =
     try {
@@ -153,21 +180,98 @@ object SitemapXmlSchema {
       rootName: String,
       rootNamespace: String
   ): Either[SitemapXmlValidationError, Unit] =
-    if (rootName != "urlset" && rootName != "sitemapindex") {
+    if (
+      rootName != "urlset" && rootName != "sitemapindex" &&
+      rootName != "rss" && rootName != "feed"
+    ) {
       Left(
         SitemapXmlValidationError(
           s"Unsupported sitemap root element: $rootName"
         )
       )
     } else if (rootNamespace.nonEmpty && rootNamespace != SitemapNamespace) {
-      Left(
-        SitemapXmlValidationError(
-          s"Unsupported sitemap namespace: $rootNamespace"
-        )
-      )
+      rootName match {
+        case "feed" if rootNamespace == AtomNamespace =>
+          Right(())
+        case "rss" =>
+          Right(())
+        case _ =>
+          Left(
+            SitemapXmlValidationError(
+              s"Unsupported sitemap namespace: $rootNamespace"
+            )
+          )
+      }
     } else {
       Right(())
     }
+
+  private def parseTextSitemap(
+      bytes: Array[Byte]
+  ): Either[SitemapXmlValidationError, SitemapXmlDocument] = {
+    val lines = new String(bytes, StandardCharsets.UTF_8)
+      .stripPrefix("\uFEFF")
+      .linesIterator
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .toVector
+
+    if (lines.isEmpty) {
+      Left(SitemapXmlValidationError("Text sitemap document is empty"))
+    } else {
+      val invalidLine = lines.find { line =>
+        !resolveLoc(URI.create("https://example.invalid/"), line).contains(line)
+      }
+
+      invalidLine match {
+        case Some(line) =>
+          Left(
+            SitemapXmlValidationError(
+              s"Invalid text sitemap URL: $line"
+            )
+          )
+        case None =>
+          Right(SitemapXmlDocument.UrlSet(lines.distinct))
+      }
+    }
+  }
+
+  private def looksLikeXml(bytes: Array[Byte]): Boolean = {
+    val text = new String(bytes.take(256), StandardCharsets.UTF_8)
+      .stripPrefix("\uFEFF")
+      .dropWhile(_.isWhitespace)
+
+    text.startsWith("<")
+  }
+
+  private def atomLinkHref(
+      rel: String | Null,
+      href: String | Null
+  ): Option[String] =
+    val normalizedRel =
+      Option(rel).map(_.trim.toLowerCase(java.util.Locale.ROOT))
+    Option(href).map(_.trim).filter { value =>
+      value.nonEmpty && normalizedRel.forall(_ == "alternate")
+    }
+
+  private def isTextLocElement(
+      rootName: String | Null,
+      localName: String
+  ): Boolean =
+    rootName match {
+      case "urlset" | "sitemapindex" => localName == "loc"
+      case "rss"                     => localName == "link"
+      case _                         => false
+    }
+
+  private def isEntryElement(
+      rootName: String | Null,
+      localName: String
+  ): Boolean =
+    (rootName == "urlset" && localName == "url") ||
+      (rootName == "sitemapindex" && localName == "sitemap") ||
+      (rootName == "rss" && localName == "item") ||
+      (rootName == "feed" && localName == "entry")
 
   private def setXmlProperty(
       factory: XMLInputFactory,
@@ -179,10 +283,6 @@ object SitemapXmlSchema {
     } catch {
       case _: IllegalArgumentException =>
     }
-
-  private def isEntryElement(rootName: String, localName: String): Boolean =
-    (rootName == "urlset" && localName == "url") ||
-      (rootName == "sitemapindex" && localName == "sitemap")
 
   private def containsWhitespaceOrControl(value: String): Boolean =
     value.exists(character => character.isWhitespace || character.isControl)
