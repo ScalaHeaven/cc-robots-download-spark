@@ -85,6 +85,50 @@ derived from the target URI, capture date, and archive path to avoid collisions.
 The output directory is not deleted before a run. Existing files with the same
 generated name are replaced.
 
+## How The Robots Pipeline Works
+
+`CommonCrawlRobotsPipeline` is the main data pipeline behind the application.
+It takes the parsed CLI configuration, downloads the Common Crawl manifest,
+uses Spark to process each listed robots.txt WARC archive in parallel, and
+writes one text file for each robots.txt response record it finds.
+
+The pipeline starts by normalizing the manifest URL. A direct
+`robotstxt.paths.gz` URL is used as-is. A sibling `wat.paths.gz` URL is
+rewritten to `robotstxt.paths.gz`, which makes it convenient to copy either
+kind of Common Crawl paths URL from the crawl index page.
+
+The manifest is streamed to a temporary `.gz` file with sttp, then read through
+`GZIPInputStream`. Empty lines and comments are ignored, and only archive paths
+that contain `/robotstxt/` and end in `.warc.gz` are kept. Relative archive
+paths are resolved against `https://data.commoncrawl.org/`; absolute paths are
+used directly.
+
+Spark receives the filtered archive path list with one partition per archive
+path. Each worker downloads its assigned archive to a temporary `.warc.gz` file,
+retrying HTTP downloads up to four times with exponential backoff. Local
+`file:` URIs and plain local paths are also supported, which is useful for
+small manual tests.
+
+Each downloaded archive is parsed with jwarc in lenient mode. The pipeline
+keeps only `WarcResponse` records whose target URI path ends with
+`/robots.txt`, case-insensitively. Non-matching records are consumed and skipped
+so the archive stream can continue without buffering record bodies in memory.
+
+For each matching response, the HTTP body stream is decoded according to the
+record's `Content-Encoding` header. `gzip`, `x-gzip`, and `deflate` encodings
+are handled, including stacked encodings, and the decoded body is copied
+directly to the output file.
+
+Output files are grouped by lowercased target host. The file name includes the
+URI scheme, WARC capture date, and the first 16 hex characters of a SHA-256
+digest over the target URI, capture date, and source archive path. This keeps
+names readable while avoiding collisions between repeated captures.
+
+Each archive task reports the number of files it saved or the failure it hit.
+After Spark collects the task results, the driver prints a run summary. If any
+archive failed to download or extract, the driver prints each failed archive and
+raises an exception so the overall run exits unsuccessfully.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
