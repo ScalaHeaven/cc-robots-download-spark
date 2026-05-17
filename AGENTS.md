@@ -32,8 +32,9 @@ just application code.
 - `src/main/scala/Main.scala`: Scala 3 Spark application entry point with the
   `Main` main class.
 - `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
-  manifest download, archive download, retry/backoff, target filtering, and HTTP
-  body decoding helpers used by robots.txt archive pipelines.
+  manifest download, archive download, retry/backoff, download timeout, target
+  filtering, and HTTP body decoding helpers used by robots.txt archive
+  pipelines.
 - `src/main/scala/CommonCrawlRobotsPipeline.scala`: parallelizes listed
   `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses WARC
   responses with jwarc, validates robots.txt payloads, and saves valid
@@ -57,9 +58,12 @@ just application code.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  `local-sitemaps`, and `filter-sitemaps` subcommands. Supports `--max-files N`
-  for WARC-backed robots and sitemaps runs to cap manifest archive files before
-  Spark downloads begin. `local-sitemaps` and `filter-sitemaps` default to
+  `local-sitemaps`, `filter-sitemaps`, and `download-sitemaps` subcommands.
+  Supports `--max-files N` for WARC-backed robots and sitemaps runs to cap
+  manifest archive files before Spark downloads begin. Supports
+  `--download-connect-timeout-seconds N` and
+  `--download-read-timeout-seconds N` for controlled HTTP downloads.
+  `local-sitemaps`, `filter-sitemaps`, and `download-sitemaps` default to
   `local[*]` instead of the standalone local cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[1,1,200]`, executor memory, Java module options, and the
@@ -288,6 +292,7 @@ The repository currently supports:
 - compiling and running a Scala 3 Spark app with sbt
 - downloading Common Crawl `robotstxt.paths.gz` manifests
 - streaming listed robotstxt WARC archives in parallel with Spark and sttp
+- controlling HTTP download connect and read timeouts for sitemap downloads
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
 - extracting `Sitemap:` links from locally saved robots.txt payload files

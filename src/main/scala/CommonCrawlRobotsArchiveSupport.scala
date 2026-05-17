@@ -9,6 +9,7 @@ import java.util.zip.{GZIPInputStream, InflaterInputStream}
 import sttp.client3.*
 import sttp.client3.httpclient.HttpClientSyncBackend
 
+import scala.concurrent.duration.*
 import scala.io.Source
 import scala.util.Try
 import scala.util.Using
@@ -85,7 +86,11 @@ object CommonCrawlRobotsArchiveSupport {
         case (stream, _)                 => stream
       }
 
-  def downloadToPath(uri: URI, destination: Path): Path =
+  def downloadToPath(
+      uri: URI,
+      destination: Path,
+      timeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts
+  ): Path =
     Option(uri.getScheme()).map(_.toLowerCase(Locale.ROOT)) match {
       case Some("file") =>
         Files.copy(
@@ -95,7 +100,7 @@ object CommonCrawlRobotsArchiveSupport {
         )
         destination
       case Some("http" | "https") =>
-        downloadHttpToPathWithRetries(uri, destination)
+        downloadHttpToPathWithRetries(uri, destination, timeouts)
       case Some(scheme) =>
         throw IOException(s"Unsupported URI scheme: $scheme")
       case None =>
@@ -133,7 +138,8 @@ object CommonCrawlRobotsArchiveSupport {
 
   private def downloadHttpToPathWithRetries(
       uri: URI,
-      destination: Path
+      destination: Path,
+      timeouts: DownloadTimeoutConfig
   ): Path = {
     var attempt = 1
     var backoffMillis = DownloadInitialBackoffMillis
@@ -141,7 +147,7 @@ object CommonCrawlRobotsArchiveSupport {
 
     while (attempt <= DownloadMaxAttempts) {
       try {
-        return downloadHttpToPath(uri, destination)
+        return downloadHttpToPath(uri, destination, timeouts)
       } catch {
         case exception: Exception =>
           lastFailure = exception
@@ -166,13 +172,22 @@ object CommonCrawlRobotsArchiveSupport {
     )
   }
 
-  private def downloadHttpToPath(uri: URI, destination: Path): Path = {
-    val backend = HttpClientSyncBackend()
+  private def downloadHttpToPath(
+      uri: URI,
+      destination: Path,
+      timeouts: DownloadTimeoutConfig
+  ): Path = {
+    val backend = HttpClientSyncBackend(
+      options = SttpBackendOptions.connectionTimeout(
+        timeouts.connectTimeoutSeconds.seconds
+      )
+    )
 
     try {
       basicRequest
         .get(sttp.model.Uri.unsafeParse(uri.toString))
         .header("User-Agent", UserAgent)
+        .readTimeout(timeouts.readTimeoutSeconds.seconds)
         .response(asPath(destination).getRight)
         .send(backend)
         .body

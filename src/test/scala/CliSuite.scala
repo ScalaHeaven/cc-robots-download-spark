@@ -65,9 +65,54 @@ class CliSuite extends munit.FunSuite {
     )
   }
 
+  test("parses download timeout options") {
+    val command = Cli.parseArgs(
+      Array(
+        "download-sitemaps",
+        "target/filtered-sitemaps/country/anguilla",
+        "target/downloaded-sitemap-links",
+        "--download-connect-timeout-seconds",
+        "5",
+        "--download-read-timeout-seconds=15"
+      )
+    )
+
+    assertEquals(
+      command.map(runConfigWithTimeouts),
+      Right(
+        (
+          PipelineMode.DownloadSitemaps,
+          DownloadTimeoutConfig(
+            connectTimeoutSeconds = 5,
+            readTimeoutSeconds = 15
+          )
+        )
+      )
+    )
+  }
+
+  test("rejects non-positive download timeouts") {
+    val command = Cli.parseArgs(
+      Array("download-sitemaps", "--download-read-timeout-seconds", "0")
+    )
+
+    assert(command.isLeft)
+    assert(command.left.exists(_.contains("positive integer")))
+  }
+
   private def runConfig(command: CliCommand): Option[Int] =
     command match {
       case CliCommand.Run(config) => config.maxFiles
       case CliCommand.ShowUsage   => None
+    }
+
+  private def runConfigWithTimeouts(
+      command: CliCommand
+  ): (PipelineMode, DownloadTimeoutConfig) =
+    command match {
+      case CliCommand.Run(config) =>
+        (config.pipeline, config.downloadTimeouts)
+      case CliCommand.ShowUsage =>
+        fail("expected run config")
     }
 }

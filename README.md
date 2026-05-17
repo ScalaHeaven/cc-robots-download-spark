@@ -71,6 +71,12 @@ page links:
 sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links"
 ```
 
+To tune HTTP timeouts for sitemap XML downloads:
+
+```bash
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links --download-connect-timeout-seconds 5 --download-read-timeout-seconds 15"
+```
+
 To run that downloader on one local Spark worker thread:
 
 ```bash
@@ -119,7 +125,10 @@ files from `target/filtered-sitemaps` by default, download each sitemap URL with
 sttp, validate sitemap XML, follow sitemap indexes, and write extracted page
 links to `target/downloaded-sitemap-links`. This subcommand defaults to
 `local[*]`; pass `local[1]` as the third argument to run on one local Spark
-worker thread.
+worker thread. HTTP downloads use a 10 second connect timeout and a 30 second
+read timeout by default. Tune them with
+`--download-connect-timeout-seconds N` and
+`--download-read-timeout-seconds N`.
 
 `local-cluster[1,1,200]` starts one local standalone master and 1 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -233,6 +242,7 @@ target/downloaded-sitemap-links/part-00000.sitemap-links.tsv
 Each extracted row contains three tab-separated fields: seed sitemap URL,
 fetched sitemap URL, and extracted page URL. Invalid sitemap XML and failed
 downloads are counted and skipped without failing the whole Spark partition.
+Timed-out downloads use the same retry/backoff path as other failed downloads.
 
 ## How The Robots Pipeline Works
 
@@ -357,13 +367,14 @@ docker run --rm cc-robots-download-spark
   adds munit for tests; configures Spark Java module options; sets the
   `sbt run` heap; and builds `app.jar` with `sbt-assembly`.
 - `src/main/scala/Main.scala`: application entry point.
-- `src/main/scala/Cli.scala`: argument parsing and runtime defaults.
+- `src/main/scala/Cli.scala`: argument parsing, runtime defaults, and download
+  timeout options.
 - `src/main/scala/SparkSessionFactory.scala`: Spark session construction,
   local-cluster driver binding, executor memory, Java module options, and
   Scala library classpath handling for executor RPC serialization.
 - `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
   manifest, archive download, retry/backoff, target filtering, and HTTP body
-  decoding helpers.
+  decoding helpers, including HTTP connect and read timeout handling.
 - `src/main/scala/CommonCrawlRobotsPipeline.scala`: Spark parallel archive
   extraction, WARC parsing, robots.txt validation, and usable robots.txt file
   writes.

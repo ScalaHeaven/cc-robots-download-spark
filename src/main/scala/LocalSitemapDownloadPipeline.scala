@@ -52,7 +52,8 @@ object LocalSitemapDownloadPipeline {
           downloadPartitionSitemaps(
             partitionId,
             files.toVector,
-            outputDirString
+            outputDirString,
+            config.downloadTimeouts
           )
         )
       }
@@ -72,6 +73,11 @@ object LocalSitemapDownloadPipeline {
     println(s"Downloaded and validated $downloadedSitemaps sitemap files")
     println(s"Rejected $invalidSitemaps invalid sitemap files")
     println(s"Failed to download $failedDownloads sitemap files")
+    println(
+      "Used HTTP download timeouts: " +
+        s"connect=${config.downloadTimeouts.connectTimeoutSeconds}s, " +
+        s"read=${config.downloadTimeouts.readTimeoutSeconds}s"
+    )
     println(s"Saved $savedLinks extracted sitemap links into $outputDir")
 
     if (failures.nonEmpty) {
@@ -115,7 +121,8 @@ object LocalSitemapDownloadPipeline {
   private def downloadPartitionSitemaps(
       partitionId: Int,
       inputFilePaths: Vector[String],
-      outputDir: String
+      outputDir: String,
+      timeouts: DownloadTimeoutConfig
   ): LocalSitemapDownloadResult =
     try {
       val taskPartitionId = Option(TaskContext.get())
@@ -125,7 +132,12 @@ object LocalSitemapDownloadPipeline {
         .of(outputDir)
         .resolve(f"part-$taskPartitionId%05d.sitemap-links.tsv")
 
-      downloadSitemapsFromFiles(taskPartitionId, inputFilePaths, outputFile)
+      downloadSitemapsFromFiles(
+        taskPartitionId,
+        inputFilePaths,
+        outputFile,
+        timeouts
+      )
     } catch {
       case exception: Exception =>
         LocalSitemapDownloadResult(
@@ -143,7 +155,8 @@ object LocalSitemapDownloadPipeline {
   private def downloadSitemapsFromFiles(
       partitionId: Int,
       inputFilePaths: Vector[String],
-      outputFile: Path
+      outputFile: Path,
+      timeouts: DownloadTimeoutConfig
   ): LocalSitemapDownloadResult = {
     var readRows = 0
     var malformedRows = 0
@@ -179,7 +192,7 @@ object LocalSitemapDownloadPipeline {
             parseSitemapInputRow(line) match {
               case Some(row) =>
                 readRows += 1
-                val counters = processSeedSitemap(row, writeLink)
+                val counters = processSeedSitemap(row, writeLink, timeouts)
                 downloadedSitemaps += counters.downloadedSitemaps
                 invalidSitemaps += counters.invalidSitemaps
                 failedDownloads += counters.failedDownloads
@@ -216,7 +229,8 @@ object LocalSitemapDownloadPipeline {
 
   private def processSeedSitemap(
       row: SitemapDownloadInputRow,
-      writeLink: (SitemapDownloadInputRow, String, String) => Unit
+      writeLink: (SitemapDownloadInputRow, String, String) => Unit,
+      timeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts
   ): SitemapCounters = {
     var downloadedSitemaps = 0
     var invalidSitemaps = 0
@@ -230,7 +244,7 @@ object LocalSitemapDownloadPipeline {
 
       if (!visited.contains(sitemapUrl) && depth <= MaxSitemapIndexDepth) {
         visited += sitemapUrl
-        downloadAndParseSitemap(sitemapUrl) match {
+        downloadAndParseSitemap(sitemapUrl, timeouts) match {
           case Success(document) =>
             downloadedSitemaps += 1
             val baseUri = URI.create(sitemapUrl)
@@ -265,7 +279,8 @@ object LocalSitemapDownloadPipeline {
       extends RuntimeException(message)
 
   private def downloadAndParseSitemap(
-      sitemapUrl: String
+      sitemapUrl: String,
+      timeouts: DownloadTimeoutConfig
   ): Try[SitemapXmlDocument] =
     Try {
       CommonCrawlRobotsArchiveSupport.withTempFile(
@@ -274,7 +289,8 @@ object LocalSitemapDownloadPipeline {
       ) { tempFile =>
         CommonCrawlRobotsArchiveSupport.downloadToPath(
           URI.create(sitemapUrl),
-          tempFile
+          tempFile,
+          timeouts
         )
 
         Using.resource(decodedSitemapStream(tempFile)) { input =>
