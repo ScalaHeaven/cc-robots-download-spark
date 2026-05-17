@@ -23,7 +23,7 @@ robots.txt files.
 ## Quick Start
 
 Open this folder in VS Code, then run **Dev Containers: Reopen in Container**.
-The container opens at `/workspaces/spark-scala3-cluster-devcontainer`.
+The container opens at `/workspaces/cc-robots-download-spark`.
 
 Inside the container:
 
@@ -348,8 +348,8 @@ scala-cli run scripts/extract_prefixes.scala
 Build and run the production image:
 
 ```bash
-docker build -t spark-scala3-cluster-devcontainer .
-docker run --rm spark-scala3-cluster-devcontainer
+docker build -t cc-robots-download-spark .
+docker run --rm cc-robots-download-spark
 ```
 
 ## Project Layout
