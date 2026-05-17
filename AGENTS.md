@@ -23,9 +23,9 @@ just application code.
 
 - `build.sbt`: main sbt build definition. Pins Scala `3.8.3`, enables
   SemanticDB, adds Spark SQL `3.5.1` through the explicit `_2.13` Spark
-  artifact, adds sttp client `3.5.2`, adds jwarc `0.36.0`, sets project
-  metadata, configures the `sbt run` JVM heap, configures Spark Java module
-  options, and configures `sbt-assembly`.
+  artifact, adds sttp client `3.5.2`, adds jwarc `0.36.0`, adds munit `1.2.0`
+  for tests, sets project metadata, configures the `sbt run` JVM heap,
+  configures Spark Java module options, and configures `sbt-assembly`.
 - `project/build.properties`: pins sbt `1.12.11`.
 - `project/plugins.sbt`: declares sbt plugins, currently `sbt-assembly` and
   `sbt-scalafmt`.
@@ -45,11 +45,21 @@ just application code.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: recursively reads locally
   saved robots.txt files, parses valid payloads with Spark, and writes extracted
   `Sitemap:` links to per-partition TSV files.
+- `src/main/scala/LocalSitemapsFilterPipeline.scala`: recursively reads local
+  sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows to
+  Ukraine, Russia, and UK domains, and writes grouped country and
+  language-region TSV files.
+- `src/main/scala/SitemapCountryLocaleClassifier.scala`: pure country suffix
+  and URL marker classifier used by the local sitemap filter and unit tests.
+- `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
+  suffix database for Ukraine, Russia, and United Kingdom matching. Keep this
+  deterministic and offline unless the runtime model is deliberately changed.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  and `local-sitemaps` subcommands. `local-sitemaps` defaults to `local[*]`
-  instead of the standalone local cluster.
+  `local-sitemaps`, and `filter-sitemaps` subcommands. `local-sitemaps` and
+  `filter-sitemaps` default to `local[*]` instead of the standalone local
+  cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[10,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
@@ -77,10 +87,12 @@ Use these commands from the repository root:
 
 ```bash
 sbt -Dsbt.batch=true compile
+sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
+sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
 sbt -Dsbt.batch=true assembly
 docker build -t spark-scala3-cluster-devcontainer .
 docker run --rm spark-scala3-cluster-devcontainer
@@ -114,6 +126,8 @@ sbt -Dsbt.batch=true scalafmtAll
   files when dependency resolution can be cached.
 - Keep Common Crawl manifest handling aligned with the archive paths consumed by
   `CommonCrawlRobotsPipeline` and `CommonCrawlSitemapsPipeline`.
+- Keep sitemap country filtering deterministic and offline. Update the vendored
+  suffix database and tests together if target country suffixes change.
 - Use sttp for HTTP downloads and keep downloads streaming to files rather than
   buffering archive contents in memory. Preserve retry/backoff behavior for
   transient download failures.
@@ -218,8 +232,8 @@ should be easy for newcomers to read and easy for tools to analyze.
 
 ### Testing Expectations
 
-- This repository currently has no test framework. If adding meaningful business
-  logic or behavior with edge cases, add a test framework instead of relying only
+- This repository uses munit for focused Scala tests. If adding meaningful
+  business logic or behavior with edge cases, add tests instead of relying only
   on `sbt run`.
 - Prefer focused unit tests around pure functions and domain behavior.
 - Test error cases, boundary inputs, and at least one representative successful
@@ -279,6 +293,8 @@ The repository currently supports:
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
 - writing locally extracted sitemap links as per-partition TSV files
+- filtering local sitemap TSV rows to Ukraine, Russia, and UK domains with
+  grouped country and language-region output
 - producing a fat JAR with `sbt-assembly`
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals
@@ -287,9 +303,8 @@ The repository currently supports:
 - syncing selected host SSH and Codex configuration into the container
 - repairing common ownership and permission issues after container startup
 
-It does not currently include a test framework or `src/test` tree. If expanding
-the pipeline with meaningful branching logic, add a test framework deliberately
-and document the new test command here and in `README.md`.
+If expanding pipeline behavior with meaningful branching logic, add focused
+munit coverage and document any new validation command here and in `README.md`.
 
 ## Verification Notes
 
@@ -297,6 +312,7 @@ At the time this file was added, these commands passed:
 
 ```bash
 sbt -Dsbt.batch=true compile
+sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
 ```

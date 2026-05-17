@@ -8,6 +8,7 @@ This repository gives you:
 - Scala `3.8.3`, sbt `1.12.11`, and Apache Spark SQL `3.5.1`
 - sttp client `3.5.2` for streaming HTTP downloads
 - jwarc `0.36.0` for reading compressed WARC archives
+- munit `1.2.0` for focused Scala tests
 - a VS Code devcontainer with JDK 21, Scala CLI, sbt, Metals, Codex, and Metals MCP
 - JDK source archives linked into the devcontainer JDK for Java standard library
   navigation from Metals
@@ -47,6 +48,16 @@ sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/common
 When the output path is omitted, `local-sitemaps` writes to
 `target/commoncrawl-sitemaps`.
 
+To filter local sitemap TSV files down to Ukraine, Russia, and United Kingdom
+domains and write country and language-region groups:
+
+```bash
+sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
+```
+
+When the output path is omitted, `filter-sitemaps` writes to
+`target/filtered-sitemaps`.
+
 The app also accepts a sibling `wat.paths.gz` URL and resolves it to
 `robotstxt.paths.gz` before downloading:
 
@@ -79,6 +90,10 @@ directory. The default local robots input directory is
 `local-sitemaps` defaults to `local[*]` instead of `local-cluster[10,1,200]`
 to avoid starting standalone Spark master and worker JVMs for local file
 parsing.
+
+Prefix arguments with `filter-sitemaps` to read local sitemap TSV files from
+`target/commoncrawl-sitemaps` by default and write filtered output to
+`target/filtered-sitemaps`. This subcommand also defaults to `local[*]`.
 
 `local-cluster[10,1,200]` starts one local standalone master and 10 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -133,6 +148,35 @@ target/commoncrawl-sitemaps/part-00000.sitemaps.tsv
 Each local row contains four tab-separated fields: robots.txt file path,
 robots.txt host directory, URI scheme inferred from the file name, and sitemap
 URL. Local partition files are replaced on rerun.
+
+The local sitemap filter reads `*.sitemaps.tsv` files produced by
+`local-sitemaps` and writes grouped TSV files beneath the requested output
+directory:
+
+```text
+target/filtered-sitemaps/country/ukraine/part-00000.sitemaps.tsv
+target/filtered-sitemaps/country/russia/part-00000.sitemaps.tsv
+target/filtered-sitemaps/country/united-kingdom/part-00000.sitemaps.tsv
+target/filtered-sitemaps/language-region/uk-UA/part-00000.sitemaps.tsv
+target/filtered-sitemaps/language-region/ru-RU/part-00000.sitemaps.tsv
+target/filtered-sitemaps/language-region/en-GB/part-00000.sitemaps.tsv
+target/filtered-sitemaps/language-region/unknown/part-00000.sitemaps.tsv
+```
+
+Each filtered row preserves the original four local sitemap fields and appends
+country key, country name, matched suffix, and detected language-region. Country
+matching uses the vendored suffix database in
+`src/main/resources/sitemap-filter/country-suffixes.tsv`: Ukraine `.ua` and
+`.укр`, Russia `.ru` and `.рф`, and United Kingdom `.uk`. The Cyrillic IDN
+suffixes are normalized with punycode equivalents, and `.gb` is intentionally
+not included because it is reserved.
+
+Language-region detection is based only on sitemap URL host and path markers.
+The filter recognizes Ukrainian markers such as `uk`, `uk-ua`, `ua`, and
+`ua-uk`; Russian markers such as `ru` and `ru-ru`; and UK English markers such
+as `en-gb`, `en-uk`, and `gb`. Rows without a marker are written to
+`language-region/unknown`. The filter does not download sitemap files or infer
+language from page content.
 
 ## How The Robots Pipeline Works
 
@@ -202,6 +246,14 @@ robots.txt files contribute their distinct `Sitemap:` links to partition TSV
 files. Invalid local robots.txt files are counted as rejected and do not
 produce output rows.
 
+`LocalSitemapsFilterPipeline` accepts a directory of local sitemap TSV files,
+such as `target/commoncrawl-sitemaps`. The driver recursively lists
+`*.sitemaps.tsv` files, Spark filters rows by the vendored country suffix
+database, and matching rows are written once to a country group and once to a
+language-region group. Country classification uses the robots host field first
+and falls back to the sitemap URL host when the robots host is unknown or not in
+the target suffix set.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
@@ -209,8 +261,10 @@ hit the sbt boot socket lock and fail with `ServerAlreadyBootingException`.
 
 ```bash
 sbt -Dsbt.batch=true compile
+sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
+sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
 ```
@@ -231,8 +285,8 @@ docker run --rm spark-scala3-cluster-devcontainer
 ## Project Layout
 
 - `build.sbt`: pins Scala, Spark SQL, sttp, and jwarc; enables SemanticDB;
-  configures Spark Java module options; sets the `sbt run` heap; and builds
-  `app.jar` with `sbt-assembly`.
+  adds munit for tests; configures Spark Java module options; sets the
+  `sbt run` heap; and builds `app.jar` with `sbt-assembly`.
 - `src/main/scala/Main.scala`: application entry point.
 - `src/main/scala/Cli.scala`: argument parsing and runtime defaults.
 - `src/main/scala/SparkSessionFactory.scala`: Spark session construction,
@@ -248,6 +302,11 @@ docker run --rm spark-scala3-cluster-devcontainer
   valid robots.txt captures and writes extracted sitemap links as TSV rows.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
   locally saved robots.txt files and writes extracted sitemap links as TSV rows.
+- `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads
+  local sitemap TSV files and writes Ukraine, Russia, and UK grouped sitemap
+  rows.
+- `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
+  suffix database for the sitemap filter.
 - `.devcontainer/Dockerfile`: development image with JDK 21, Scala tools, JDK
   sources for Metals navigation, and a minimal Spark home.
 - `.devcontainer/post-start.sh`: idempotent startup repair and tool setup.

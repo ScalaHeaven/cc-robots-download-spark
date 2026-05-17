@@ -7,6 +7,7 @@ ThisBuild / scalacOptions += "-Yexplicit-nulls"
 lazy val sparkVersion = "3.5.1"
 lazy val jwarcVersion = "0.36.0"
 lazy val sttpVersion = "3.5.2"
+lazy val munitVersion = "1.2.0"
 
 lazy val sparkJavaOptions = Seq(
   "--add-opens=java.base/java.lang=ALL-UNNAMED",
@@ -34,7 +35,8 @@ lazy val root = (project in file("."))
       ("org.apache.spark" % "spark-sql_2.13" % sparkVersion)
         .exclude("commons-logging", "commons-logging"),
       "org.netpreserve" % "jwarc" % jwarcVersion,
-      "com.softwaremill.sttp.client3" %% "httpclient-backend" % sttpVersion
+      "com.softwaremill.sttp.client3" %% "httpclient-backend" % sttpVersion,
+      "org.scalameta" %% "munit" % munitVersion % Test
     ),
     Compile / run / fork := true,
     Compile / run / javaOptions += "-Xmx4g",

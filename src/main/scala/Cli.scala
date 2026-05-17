@@ -9,6 +9,7 @@ enum PipelineMode:
   case Robots
   case Sitemaps
   case LocalSitemaps
+  case FilterSitemaps
 
 enum CliCommand:
   case Run(config: JobConfig)
@@ -19,6 +20,7 @@ object Cli {
     "https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz"
   val DefaultOutputPath = "target/commoncrawl-robots"
   val DefaultSitemapsOutputPath = "target/commoncrawl-sitemaps"
+  val DefaultFilteredSitemapsOutputPath = "target/filtered-sitemaps"
   val DefaultMaster = "local-cluster[10,1,200]"
   val DefaultLocalSitemapsMaster = "local[*]"
 
@@ -51,6 +53,14 @@ object Cli {
           DefaultSitemapsOutputPath,
           PipelineMode.LocalSitemaps,
           defaultInputPath = DefaultOutputPath,
+          defaultMaster = DefaultLocalSitemapsMaster
+        )
+      case "filter-sitemaps" :: remaining =>
+        parseRunConfig(
+          remaining,
+          DefaultFilteredSitemapsOutputPath,
+          PipelineMode.FilterSitemaps,
+          defaultInputPath = DefaultSitemapsOutputPath,
           defaultMaster = DefaultLocalSitemapsMaster
         )
       case pathsUrl :: outputPath :: Nil =>
@@ -119,14 +129,18 @@ object Cli {
        |  sbt "run robots [paths_gz_url] [output_dir] [spark_master]"
        |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master]"
        |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
+       |  sbt "run filter-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
        |
        |Defaults:
        |  paths_gz_url          $DefaultPathsUrl
        |  robots_dir            $DefaultOutputPath
+       |  sitemaps_dir          $DefaultSitemapsOutputPath
        |  robots output_dir     $DefaultOutputPath
        |  sitemaps output_dir   $DefaultSitemapsOutputPath
+       |  filtered output_dir   $DefaultFilteredSitemapsOutputPath
        |  spark_master          $DefaultMaster
        |  local-sitemaps master $DefaultLocalSitemapsMaster
+       |  filter-sitemaps master $DefaultLocalSitemapsMaster
        |
        |Pass a Common Crawl robotstxt.paths.gz URL. A sibling wat.paths.gz URL is
        |also accepted and is resolved to robotstxt.paths.gz before downloading.
