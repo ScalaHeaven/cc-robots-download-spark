@@ -28,6 +28,8 @@ object Main {
               LocalRobotsSitemapsPipeline.run(spark, config)
             case PipelineMode.FilterSitemaps =>
               LocalSitemapsFilterPipeline.run(spark, config)
+            case PipelineMode.DownloadSitemaps =>
+              LocalSitemapDownloadPipeline.run(spark, config)
           }
         } finally {
           spark.stop()

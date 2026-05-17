@@ -40,6 +40,31 @@ class CliSuite extends munit.FunSuite {
     assert(command.left.exists(_.contains("only supported for robots")))
   }
 
+  test("parses download sitemaps command") {
+    val command = Cli.parseArgs(
+      Array(
+        "download-sitemaps",
+        "target/filtered-sitemaps/country/anguilla",
+        "target/downloaded-sitemap-links"
+      )
+    )
+
+    assertEquals(
+      command,
+      Right(
+        CliCommand.Run(
+          JobConfig(
+            "target/filtered-sitemaps/country/anguilla",
+            "target/downloaded-sitemap-links",
+            Cli.DefaultLocalSitemapsMaster,
+            PipelineMode.DownloadSitemaps,
+            None
+          )
+        )
+      )
+    )
+  }
+
   private def runConfig(command: CliCommand): Option[Int] =
     command match {
       case CliCommand.Run(config) => config.maxFiles

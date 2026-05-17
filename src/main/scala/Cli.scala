@@ -13,6 +13,7 @@ enum PipelineMode:
   case Sitemaps
   case LocalSitemaps
   case FilterSitemaps
+  case DownloadSitemaps
 
 enum CliCommand:
   case Run(config: JobConfig)
@@ -24,6 +25,8 @@ object Cli {
   val DefaultOutputPath = "target/commoncrawl-robots"
   val DefaultSitemapsOutputPath = "target/commoncrawl-sitemaps"
   val DefaultFilteredSitemapsOutputPath = "target/filtered-sitemaps"
+  val DefaultDownloadedSitemapLinksOutputPath =
+    "target/downloaded-sitemap-links"
   val DefaultMaster = "local-cluster[10,1,200]"
   val DefaultLocalSitemapsMaster = "local[*]"
 
@@ -78,6 +81,15 @@ object Cli {
             DefaultFilteredSitemapsOutputPath,
             PipelineMode.FilterSitemaps,
             defaultInputPath = DefaultSitemapsOutputPath,
+            defaultMaster = DefaultLocalSitemapsMaster
+          )
+        case "download-sitemaps" :: remaining =>
+          parseLocalRunConfig(
+            remaining,
+            maxFiles,
+            DefaultDownloadedSitemapLinksOutputPath,
+            PipelineMode.DownloadSitemaps,
+            defaultInputPath = DefaultFilteredSitemapsOutputPath,
             defaultMaster = DefaultLocalSitemapsMaster
           )
         case pathsUrl :: outputPath :: Nil =>
@@ -223,6 +235,7 @@ object Cli {
        |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
        |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
        |  sbt "run filter-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
+       |  sbt "run download-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
        |
        |Defaults:
        |  paths_gz_url          $DefaultPathsUrl
@@ -231,9 +244,11 @@ object Cli {
        |  robots output_dir     $DefaultOutputPath
        |  sitemaps output_dir   $DefaultSitemapsOutputPath
        |  filtered output_dir   $DefaultFilteredSitemapsOutputPath
+       |  sitemap links output_dir $DefaultDownloadedSitemapLinksOutputPath
        |  spark_master          $DefaultMaster
        |  local-sitemaps master $DefaultLocalSitemapsMaster
        |  filter-sitemaps master $DefaultLocalSitemapsMaster
+       |  download-sitemaps master $DefaultLocalSitemapsMaster
        |
        |Options:
        |  --max-files N        limit robotstxt archive files read from the manifest

@@ -64,6 +64,19 @@ sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/fil
 When the output path is omitted, `filter-sitemaps` writes to
 `target/filtered-sitemaps`.
 
+To download sitemap XML files from a filtered sitemap TSV folder and extract
+page links:
+
+```bash
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links"
+```
+
+To run that downloader on one local Spark worker thread:
+
+```bash
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
+```
+
 The app also accepts a sibling `wat.paths.gz` URL and resolves it to
 `robotstxt.paths.gz` before downloading:
 
@@ -100,6 +113,13 @@ parsing.
 Prefix arguments with `filter-sitemaps` to read local sitemap TSV files from
 `target/commoncrawl-sitemaps` by default and write filtered output to
 `target/filtered-sitemaps`. This subcommand also defaults to `local[*]`.
+
+Prefix arguments with `download-sitemaps` to read local or filtered sitemap TSV
+files from `target/filtered-sitemaps` by default, download each sitemap URL with
+sttp, validate sitemap XML, follow sitemap indexes, and write extracted page
+links to `target/downloaded-sitemap-links`. This subcommand defaults to
+`local[*]`; pass `local[1]` as the third argument to run on one local Spark
+worker thread.
 
 `local-cluster[10,1,200]` starts one local standalone master and 10 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -193,6 +213,28 @@ as `en-gb`, `en-uk`, and `gb`. Rows without a marker are written to
 `language-region/unknown`. The filter does not download sitemap files or infer
 language from page content.
 
+The sitemap downloader reads `*.sitemaps.tsv` files from the requested folder,
+including grouped paths such as:
+
+```text
+target/filtered-sitemaps/country/anguilla/part-00000.sitemaps.tsv
+```
+
+Rows may come from `local-sitemaps` or `filter-sitemaps`; the fourth TSV field
+is treated as the seed sitemap URL. Each seed sitemap is downloaded to a
+temporary file with sttp, gzip-compressed sitemap files are decoded, and XML is
+validated as either a Sitemap `urlset` or `sitemapindex`. Sitemap indexes are
+followed recursively, and URL-set links are written to partition files:
+
+```text
+target/downloaded-sitemap-links/part-00000.sitemap-links.tsv
+```
+
+Each extracted row contains six tab-separated fields: source TSV file, robots
+host, robots scheme, seed sitemap URL, fetched sitemap URL, and extracted page
+URL. Invalid sitemap XML and failed downloads are counted and skipped without
+failing the whole Spark partition.
+
 ## How The Robots Pipeline Works
 
 `CommonCrawlRobotsPipeline` is the main data pipeline behind the application.
@@ -281,6 +323,7 @@ sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
 ```
@@ -327,6 +370,11 @@ docker run --rm spark-scala3-cluster-devcontainer
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads
   local sitemap TSV files and writes Ukraine, Russia, and UK grouped sitemap
   rows.
+- `src/main/scala/SitemapXmlSchema.scala`: sitemap XML schema parser and
+  validator for `urlset` and `sitemapindex` documents.
+- `src/main/scala/LocalSitemapDownloadPipeline.scala`: Spark pipeline that
+  reads local sitemap TSV rows, downloads sitemap XML files, follows sitemap
+  indexes, and writes extracted page links.
 - `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
   suffix database for the sitemap filter.
 - `scripts/extract_prefixes.scala`: Scala CLI helper that refreshes the
