@@ -17,7 +17,7 @@ This repository gives you:
 The app streams a Common Crawl `robotstxt.paths.gz` manifest to a temporary
 file with sttp, reads the archive paths inside it, launches Spark jobs to stream
 the listed `robotstxt/*.warc.gz` archives in parallel with retry/backoff, and
-can either save valid robots.txt payloads or extract sitemap links from parsed
+can either save usable robots.txt payloads or extract sitemap links from parsed
 robots.txt files.
 
 ## Quick Start
@@ -100,7 +100,7 @@ output_dir   target/commoncrawl-robots
 spark_master local-cluster[10,1,200]
 ```
 
-The default command saves valid robots.txt files. Prefix arguments with
+The default command saves usable robots.txt files. Prefix arguments with
 `sitemaps` to run the WARC-backed sitemap-link pipeline instead. Prefix
 arguments with `local-sitemaps` to parse an existing local robots.txt output
 directory. The default local robots input directory is
@@ -240,7 +240,7 @@ failing the whole Spark partition.
 `CommonCrawlRobotsPipeline` is the main data pipeline behind the application.
 It takes the parsed CLI configuration, downloads the Common Crawl manifest,
 uses Spark to process each listed robots.txt WARC archive in parallel, and
-writes one text file for each valid robots.txt response record it finds.
+writes one text file for each usable robots.txt response record it finds.
 
 The pipeline starts by normalizing the manifest URL. A direct
 `robotstxt.paths.gz` URL is used as-is. A sibling `wat.paths.gz` URL is
@@ -268,18 +268,22 @@ so the archive stream can continue without buffering record bodies in memory.
 For each matching response, the HTTP body stream is decoded according to the
 record's `Content-Encoding` header. `gzip`, `x-gzip`, and `deflate` encodings
 are handled, including stacked encodings. The decoded text is parsed with
-`RobotsTxtParser`, and only captures with at least one valid user-agent group
-and no parser warnings are written to the output directory. Invalid captures
-are rejected and left off disk.
+`RobotsTxtParser`, and captures with at least one usable user-agent group or
+one `Sitemap:` directive are written to the output directory. Parser warnings
+record site-owner mistakes such as malformed optional directives, but those
+warnings do not reject an otherwise usable robots.txt file. Captures with no
+usable robots directives, such as HTML error pages, are rejected and left off
+disk.
 
 Output files are grouped by lowercased target host. The file name includes the
 URI scheme, WARC capture date, and the first 16 hex characters of a SHA-256
 digest over the target URI, capture date, and source archive path. This keeps
 names readable while avoiding collisions between repeated captures.
 
-Each archive task reports the number of valid files it saved, the number of
-invalid files it rejected, or the failure it hit. After Spark collects the task
-results, the driver prints a run summary with total saved and rejected counts.
+Each archive task reports the number of usable files it saved, the number of
+captures without usable robots directives it rejected, or the failure it hit.
+After Spark collects the task results, the driver prints a run summary with
+total saved and rejected counts.
 If any archive failed to download or extract, the driver prints each failed
 archive and raises an exception so the overall run exits unsuccessfully.
 
@@ -288,21 +292,22 @@ archive and raises an exception so the overall run exits unsuccessfully.
 `CommonCrawlSitemapsPipeline` reuses the same Common Crawl manifest handling,
 archive download, retry/backoff, response decoding, and WARC parsing behavior as
 the robots pipeline. It parses each matching `/robots.txt` response with
-`RobotsTxtParser`; valid captures contribute their `Sitemap:` links, while
-invalid captures are counted as rejected and do not produce output rows.
+`RobotsTxtParser`; captures with usable robots data contribute their `Sitemap:`
+links, while captures with no usable robots directives are counted as rejected
+and do not produce output rows.
 
 Each archive task writes its sitemap links to a deterministic
 `archive-<hash>.sitemaps.tsv` file under the configured output directory and
-logs the number of valid robots.txt files parsed, invalid files rejected, and
-sitemap links saved. The driver prints total parsed, rejected, and saved-link
-counts after Spark collects the task results.
+logs the number of usable robots.txt files parsed, captures without usable
+robots directives rejected, and sitemap links saved. The driver prints total
+parsed, rejected, and saved-link counts after Spark collects the task results.
 
 `LocalRobotsSitemapsPipeline` accepts a directory that contains already saved
 robots.txt files, such as `target/commoncrawl-robots`. The driver recursively
 lists `.txt` files, Spark parses them in bounded partitions, and valid
 robots.txt files contribute their distinct `Sitemap:` links to partition TSV
-files. Invalid local robots.txt files are counted as rejected and do not
-produce output rows.
+files. Local files with no usable robots directives are counted as rejected and
+do not produce output rows.
 
 `LocalSitemapsFilterPipeline` accepts a directory of local sitemap TSV files,
 such as `target/commoncrawl-sitemaps`. The driver recursively lists
@@ -361,10 +366,10 @@ docker run --rm spark-scala3-cluster-devcontainer
   manifest, archive download, retry/backoff, target filtering, and HTTP body
   decoding helpers.
 - `src/main/scala/CommonCrawlRobotsPipeline.scala`: Spark parallel archive
-  extraction, WARC parsing, robots.txt validation, and valid robots.txt file
+  extraction, WARC parsing, robots.txt validation, and usable robots.txt file
   writes.
 - `src/main/scala/CommonCrawlSitemapsPipeline.scala`: Spark pipeline that parses
-  valid robots.txt captures and writes extracted sitemap links as TSV rows.
+  usable robots.txt captures and writes extracted sitemap links as TSV rows.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
   locally saved robots.txt files and writes extracted sitemap links as TSV rows.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads

@@ -50,8 +50,10 @@ object CommonCrawlSitemapsPipeline {
         s"Limited manifest processing to $maxFiles robotstxt archive files"
       )
     }
-    println(s"Parsed $parsedFiles valid robots.txt captures")
-    println(s"Rejected $rejectedFiles invalid robots.txt captures")
+    println(s"Parsed $parsedFiles usable robots.txt captures")
+    println(
+      s"Rejected $rejectedFiles robots.txt captures without usable robots directives"
+    )
     println(s"Saved $savedSitemapLinks sitemap links into $outputDir")
 
     if (failures.nonEmpty) {
@@ -86,7 +88,9 @@ object CommonCrawlSitemapsPipeline {
           extractSitemaps(tempFile, outputFile, archivePath)
 
         println(
-          s"Archive $archivePath: parsed ${result.parsedFiles} valid robots.txt files; rejected ${result.rejectedFiles} invalid robots.txt files; saved ${result.savedSitemapLinks} sitemap links"
+          s"Archive $archivePath: parsed ${result.parsedFiles} usable robots.txt files; " +
+            s"rejected ${result.rejectedFiles} captures without usable robots directives; " +
+            s"saved ${result.savedSitemapLinks} sitemap links"
         )
 
         result

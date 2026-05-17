@@ -7,7 +7,7 @@ final case class RobotsTxt(
     warnings: Vector[RobotsParseWarning]
 ) {
   def isValid: Boolean =
-    groups.nonEmpty && warnings.isEmpty
+    groups.nonEmpty || sitemaps.nonEmpty
 
   def groupsFor(userAgent: String): Vector[RobotsGroup] = {
     val normalizedUserAgent = userAgent.toLowerCase(Locale.ROOT)
@@ -75,7 +75,7 @@ object RobotsTxtParser {
       line.split(":", 2).toList match {
         case fieldName :: value :: Nil =>
           applyField(
-            fieldName.trim.toLowerCase(Locale.ROOT),
+            normalizeFieldName(fieldName),
             value.trim,
             lineNumber,
             builder
@@ -102,14 +102,14 @@ object RobotsTxtParser {
         }
 
       case "allow" =>
-        builder.addRule(RobotsRule.Allow(value))
+        builder.addRule(RobotsRule.Allow(value), lineNumber)
 
       case "disallow" =>
-        builder.addRule(RobotsRule.Disallow(value))
+        builder.addRule(RobotsRule.Disallow(value), lineNumber)
 
       case "crawl-delay" =>
         parseCrawlDelay(value) match {
-          case Some(delay) => builder.setCrawlDelay(delay)
+          case Some(delay) => builder.setCrawlDelay(delay, lineNumber)
           case None        =>
             builder.warn(
               lineNumber,
@@ -119,8 +119,9 @@ object RobotsTxtParser {
 
       case "request-rate" =>
         parseRequestRate(value) match {
-          case Some(requestRate) => builder.setRequestRate(requestRate)
-          case None              =>
+          case Some(requestRate) =>
+            builder.setRequestRate(requestRate, lineNumber)
+          case None =>
             builder.warn(
               lineNumber,
               s"Invalid request-rate value '$value'"
@@ -140,6 +141,9 @@ object RobotsTxtParser {
 
   private def stripComment(line: String): String =
     line.takeWhile(_ != '#')
+
+  private def normalizeFieldName(fieldName: String): String =
+    fieldName.trim.stripPrefix("\uFEFF").toLowerCase(Locale.ROOT)
 
   private def parseCrawlDelay(value: String): Option[Double] =
     value.toDoubleOption.filter(_ >= 0)
@@ -175,14 +179,29 @@ object RobotsTxtParser {
       currentUserAgents :+= userAgent.toLowerCase(Locale.ROOT)
     }
 
-    def addRule(rule: RobotsRule): Unit =
-      currentRules :+= rule
+    def addRule(rule: RobotsRule, lineNumber: Int): Unit =
+      if (currentUserAgents.nonEmpty) {
+        currentRules :+= rule
+      } else {
+        warn(lineNumber, "Ignored rule before user-agent")
+      }
 
-    def setCrawlDelay(crawlDelay: Double): Unit =
-      currentCrawlDelay = Some(crawlDelay)
+    def setCrawlDelay(crawlDelay: Double, lineNumber: Int): Unit =
+      if (currentUserAgents.nonEmpty) {
+        currentCrawlDelay = Some(crawlDelay)
+      } else {
+        warn(lineNumber, "Ignored crawl-delay before user-agent")
+      }
 
-    def setRequestRate(requestRate: RobotsRequestRate): Unit =
-      currentRequestRate = Some(requestRate)
+    def setRequestRate(
+        requestRate: RobotsRequestRate,
+        lineNumber: Int
+    ): Unit =
+      if (currentUserAgents.nonEmpty) {
+        currentRequestRate = Some(requestRate)
+      } else {
+        warn(lineNumber, "Ignored request-rate before user-agent")
+      }
 
     def addSitemap(sitemap: String): Unit =
       parsedSitemaps :+= sitemap

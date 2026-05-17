@@ -54,8 +54,10 @@ object CommonCrawlRobotsPipeline {
         s"Limited manifest processing to $maxFiles robotstxt archive files"
       )
     }
-    println(s"Saved $savedFiles valid robots.txt captures into $outputDir")
-    println(s"Rejected $rejectedFiles invalid robots.txt captures")
+    println(s"Saved $savedFiles usable robots.txt captures into $outputDir")
+    println(
+      s"Rejected $rejectedFiles robots.txt captures without usable robots directives"
+    )
 
     if (failures.nonEmpty) {
       failures.foreach { failure =>
@@ -86,7 +88,8 @@ object CommonCrawlRobotsPipeline {
           extractRobots(tempFile, Path.of(outputDir), archivePath)
 
         println(
-          s"Archive $archivePath: saved ${extractionResult.savedFiles} valid robots.txt files; rejected ${extractionResult.rejectedFiles} invalid robots.txt files"
+          s"Archive $archivePath: saved ${extractionResult.savedFiles} usable robots.txt files; " +
+            s"rejected ${extractionResult.rejectedFiles} captures without usable robots directives"
         )
 
         ArchiveDownloadResult(

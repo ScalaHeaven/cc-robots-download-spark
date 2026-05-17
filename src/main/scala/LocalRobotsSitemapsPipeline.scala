@@ -55,8 +55,10 @@ object LocalRobotsSitemapsPipeline {
     val failures = results.filter(_.failure != null)
 
     println(s"Read ${robotsFiles.size} local robots.txt files from $robotsDir")
-    println(s"Parsed $parsedFiles valid robots.txt files")
-    println(s"Rejected $rejectedFiles invalid robots.txt files")
+    println(s"Parsed $parsedFiles usable robots.txt files")
+    println(
+      s"Rejected $rejectedFiles robots.txt files without usable robots directives"
+    )
     println(s"Saved $savedSitemapLinks sitemap links into $outputDir")
 
     if (failures.nonEmpty) {
