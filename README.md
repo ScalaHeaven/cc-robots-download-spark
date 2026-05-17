@@ -291,6 +291,12 @@ Format Scala sources with:
 sbt -Dsbt.batch=true scalafmtAll
 ```
 
+Refresh the vendored country suffix TSV from IANA with Scala CLI:
+
+```bash
+scala-cli run scripts/extract_prefixes.scala
+```
+
 Build and run the production image:
 
 ```bash
@@ -323,6 +329,8 @@ docker run --rm spark-scala3-cluster-devcontainer
   rows.
 - `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
   suffix database for the sitemap filter.
+- `scripts/extract_prefixes.scala`: Scala CLI helper that refreshes the
+  vendored country suffix database from IANA root-zone metadata.
 - `.devcontainer/Dockerfile`: development image with JDK 21, Scala tools, JDK
   sources for Metals navigation, and a minimal Spark home.
 - `.devcontainer/post-start.sh`: idempotent startup repair and tool setup.
