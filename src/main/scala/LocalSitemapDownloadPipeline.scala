@@ -11,9 +11,6 @@ import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try, Using}
 
 final case class SitemapDownloadInputRow(
-    sourceFile: String,
-    robotsHost: String,
-    robotsScheme: String,
     seedSitemapUrl: String
 )
 
@@ -169,14 +166,7 @@ object LocalSitemapDownloadPipeline {
       }
 
       writer.nn.write(
-        Vector(
-          row.sourceFile,
-          row.robotsHost,
-          row.robotsScheme,
-          row.seedSitemapUrl,
-          fetchedSitemapUrl,
-          pageUrl
-        ).map(tsvField).mkString("\t")
+        extractedLinkTsvRow(row.seedSitemapUrl, fetchedSitemapUrl, pageUrl)
       )
       writer.nn.newLine()
       savedLinks += 1
@@ -186,7 +176,7 @@ object LocalSitemapDownloadPipeline {
       inputFilePaths.foreach { inputFilePath =>
         Using.resource(Files.lines(Path.of(inputFilePath))) { lines =>
           lines.iterator().asScala.foreach { line =>
-            parseSitemapInputRow(inputFilePath, line) match {
+            parseSitemapInputRow(line) match {
               case Some(row) =>
                 readRows += 1
                 val counters = processSeedSitemap(row, writeLink)
@@ -313,22 +303,23 @@ object LocalSitemapDownloadPipeline {
   }
 
   private def parseSitemapInputRow(
-      sourceFile: String,
       line: String
   ): Option[SitemapDownloadInputRow] =
     line.split("\t", -1).toVector match {
       case fields if fields.length >= 4 && fields(3).nonEmpty =>
-        Some(
-          SitemapDownloadInputRow(
-            sourceFile,
-            fields(1),
-            fields(2),
-            fields(3)
-          )
-        )
+        Some(SitemapDownloadInputRow(fields(3)))
       case _ =>
         None
     }
+
+  def extractedLinkTsvRow(
+      seedSitemapUrl: String,
+      fetchedSitemapUrl: String,
+      pageUrl: String
+  ): String =
+    Vector(seedSitemapUrl, fetchedSitemapUrl, pageUrl).map(tsvField).mkString(
+      "\t"
+    )
 
   private def tsvField(value: String): String =
     value

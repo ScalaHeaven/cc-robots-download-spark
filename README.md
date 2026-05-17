@@ -230,10 +230,9 @@ followed recursively, and URL-set links are written to partition files:
 target/downloaded-sitemap-links/part-00000.sitemap-links.tsv
 ```
 
-Each extracted row contains six tab-separated fields: source TSV file, robots
-host, robots scheme, seed sitemap URL, fetched sitemap URL, and extracted page
-URL. Invalid sitemap XML and failed downloads are counted and skipped without
-failing the whole Spark partition.
+Each extracted row contains three tab-separated fields: seed sitemap URL,
+fetched sitemap URL, and extracted page URL. Invalid sitemap XML and failed
+downloads are counted and skipped without failing the whole Spark partition.
 
 ## How The Robots Pipeline Works
 
