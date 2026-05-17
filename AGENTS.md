@@ -8,7 +8,7 @@ This repository is a ready-to-open Scala 3 and Apache Spark development
 workspace for VS Code Dev Containers. It provides:
 
 - a Scala 3 sbt project with Common Crawl robots.txt and sitemap-link Spark
-  pipelines that default to a local standalone cluster with one master and 50
+  pipelines that default to a local standalone cluster with one master and 10
   workers
 - a devcontainer image with JDK 21, Node.js, Codex, Coursier, Scala CLI, sbt,
   Metals, Metals MCP, and JDK sources for Java standard library navigation
@@ -291,7 +291,7 @@ The repository currently supports:
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
 - extracting `Sitemap:` links from locally saved robots.txt payload files
-- starting one local Spark master and 50 local Spark workers by default
+- starting one local Spark master and 10 local Spark workers by default
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
 - writing locally extracted sitemap links as per-partition TSV files
