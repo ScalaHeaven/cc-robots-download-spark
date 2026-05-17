@@ -97,7 +97,7 @@ When no arguments are supplied, the app uses:
 ```text
 paths_gz_url https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz
 output_dir   target/commoncrawl-robots
-spark_master local-cluster[10,1,200]
+spark_master local-cluster[1,1,200]
 ```
 
 The default command saves usable robots.txt files. Prefix arguments with
@@ -106,7 +106,7 @@ arguments with `local-sitemaps` to parse an existing local robots.txt output
 directory. The default local robots input directory is
 `target/commoncrawl-robots`, and the default sitemap output directory is
 `target/commoncrawl-sitemaps`. Unlike the WARC-backed pipelines,
-`local-sitemaps` defaults to `local[*]` instead of `local-cluster[10,1,200]`
+`local-sitemaps` defaults to `local[*]` instead of `local-cluster[1,1,200]`
 to avoid starting standalone Spark master and worker JVMs for local file
 parsing.
 
@@ -121,7 +121,7 @@ links to `target/downloaded-sitemap-links`. This subcommand defaults to
 `local[*]`; pass `local[1]` as the third argument to run on one local Spark
 worker thread.
 
-`local-cluster[10,1,200]` starts one local standalone master and 10 worker
+`local-cluster[1,1,200]` starts one local standalone master and 1 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
 configured with `spark.executor.memory=200m`, and Spark's reserved-memory floor
 is disabled with `spark.testing.reservedMemory=0` so the low-memory development

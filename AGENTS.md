@@ -62,7 +62,7 @@ just application code.
   Spark downloads begin. `local-sitemaps` and `filter-sitemaps` default to
   `local[*]` instead of the standalone local cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
-  `local-cluster[10,1,200]`, executor memory, Java module options, and the
+  `local-cluster[1,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
 - `.scalafmt.conf`: Scala formatting config, using Scalafmt `3.10.7` and the
   Scala 3 dialect.
@@ -291,7 +291,7 @@ The repository currently supports:
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
 - extracting `Sitemap:` links from locally saved robots.txt payload files
-- starting one local Spark master and 10 local Spark workers by default
+- starting one local Spark master and 1 local Spark workers by default
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
 - writing locally extracted sitemap links as per-partition TSV files

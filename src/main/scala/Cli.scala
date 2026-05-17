@@ -27,7 +27,7 @@ object Cli {
   val DefaultFilteredSitemapsOutputPath = "target/filtered-sitemaps"
   val DefaultDownloadedSitemapLinksOutputPath =
     "target/downloaded-sitemap-links"
-  val DefaultMaster = "local-cluster[10,1,200]"
+  val DefaultMaster = "local-cluster[1,1,200]"
   val DefaultLocalSitemapsMaster = "local[*]"
 
   def parseArgs(args: Array[String]): Either[String, CliCommand] =
