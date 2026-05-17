@@ -25,8 +25,11 @@ object CommonCrawlRobotsPipeline {
   def run(spark: SparkSession, config: JobConfig): Unit = {
     val manifestUrl =
       CommonCrawlRobotsArchiveSupport.resolveManifestUrl(config.pathsUrl)
-    val archivePaths =
+    val allArchivePaths =
       CommonCrawlRobotsArchiveSupport.readArchivePaths(manifestUrl)
+    val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
+      allArchivePaths.take(maxFiles)
+    }
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
 
@@ -46,6 +49,11 @@ object CommonCrawlRobotsPipeline {
     println(
       s"Read ${archivePaths.size} robotstxt archive paths from $manifestUrl"
     )
+    config.maxFiles.foreach { maxFiles =>
+      println(
+        s"Limited manifest processing to $maxFiles robotstxt archive files"
+      )
+    }
     println(s"Saved $savedFiles valid robots.txt captures into $outputDir")
     println(s"Rejected $rejectedFiles invalid robots.txt captures")
 

@@ -32,6 +32,12 @@ sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
 ```
 
+To process only the first 5,000 robotstxt archive files from the manifest:
+
+```bash
+sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000"
+```
+
 To extract sitemap links from parsed robots.txt files instead:
 
 ```bash
@@ -106,6 +112,15 @@ To target another Spark master, pass it as the third argument:
 
 ```bash
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz /data/commoncrawl-robots spark://spark-master:7077"
+```
+
+To cap a WARC-backed run before Spark starts downloading archives, pass
+`--max-files N`. The option applies to the default robots command and the
+`sitemaps` command, and limits the number of `robotstxt/*.warc.gz` archive
+files read from the manifest:
+
+```bash
+sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz /data/commoncrawl-robots spark://spark-master:7077 --max-files 5000"
 ```
 
 For external clusters, make sure the output path is reachable and writable from
@@ -194,7 +209,8 @@ The manifest is streamed to a temporary `.gz` file with sttp, then read through
 `GZIPInputStream`. Empty lines and comments are ignored, and only archive paths
 that contain `/robotstxt/` and end in `.warc.gz` are kept. Relative archive
 paths are resolved against `https://data.commoncrawl.org/`; absolute paths are
-used directly.
+used directly. When `--max-files N` is set, only the first `N` matching archive
+paths are handed to Spark.
 
 Spark receives the filtered archive path list with one partition per archive
 path. Each worker downloads its assigned archive to a temporary `.warc.gz` file,

@@ -57,9 +57,10 @@ just application code.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  `local-sitemaps`, and `filter-sitemaps` subcommands. `local-sitemaps` and
-  `filter-sitemaps` default to `local[*]` instead of the standalone local
-  cluster.
+  `local-sitemaps`, and `filter-sitemaps` subcommands. Supports `--max-files N`
+  for WARC-backed robots and sitemaps runs to cap manifest archive files before
+  Spark downloads begin. `local-sitemaps` and `filter-sitemaps` default to
+  `local[*]` instead of the standalone local cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[10,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
@@ -90,6 +91,7 @@ sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
+sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000"
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"

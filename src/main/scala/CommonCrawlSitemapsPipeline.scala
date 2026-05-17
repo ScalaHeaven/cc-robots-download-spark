@@ -20,8 +20,11 @@ object CommonCrawlSitemapsPipeline {
   def run(spark: SparkSession, config: JobConfig): Unit = {
     val manifestUrl =
       CommonCrawlRobotsArchiveSupport.resolveManifestUrl(config.pathsUrl)
-    val archivePaths =
+    val allArchivePaths =
       CommonCrawlRobotsArchiveSupport.readArchivePaths(manifestUrl)
+    val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
+      allArchivePaths.take(maxFiles)
+    }
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
 
@@ -42,6 +45,11 @@ object CommonCrawlSitemapsPipeline {
     println(
       s"Read ${archivePaths.size} robotstxt archive paths from $manifestUrl"
     )
+    config.maxFiles.foreach { maxFiles =>
+      println(
+        s"Limited manifest processing to $maxFiles robotstxt archive files"
+      )
+    }
     println(s"Parsed $parsedFiles valid robots.txt captures")
     println(s"Rejected $rejectedFiles invalid robots.txt captures")
     println(s"Saved $savedSitemapLinks sitemap links into $outputDir")
