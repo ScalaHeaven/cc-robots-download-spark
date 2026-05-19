@@ -64,16 +64,23 @@ sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/fil
 When the output path is omitted, `filter-sitemaps` writes to
 `target/filtered-sitemaps`.
 
-To extract sitemap links for one country:
+To download Common Crawl robots archives and extract sitemap links for one
+country without writing intermediate robots.txt files or all sitemap links:
 
 ```bash
-sbt -Dsbt.batch=true "run country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
+sbt -Dsbt.batch=true "run country-sitemaps ukraine https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/filtered-sitemaps/country/ukraine --max-files 5000"
 ```
 
 The country can be a country key, country name, or suffix from the vendored
 suffix database, such as `ukraine`, `United Kingdom`, or `.ua`. When the output
 path is omitted, `country-sitemaps ukraine` writes to
 `target/filtered-sitemaps/country/ukraine`.
+
+To apply the same one-country filter to existing local sitemap TSV files:
+
+```bash
+sbt -Dsbt.batch=true "run local-country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
+```
 
 To download sitemap XML files from a filtered sitemap TSV folder and extract
 page links:
@@ -131,11 +138,17 @@ Prefix arguments with `filter-sitemaps` to read local sitemap TSV files from
 `target/commoncrawl-sitemaps` by default and write filtered output to
 `target/filtered-sitemaps`. This subcommand also defaults to `local[*]`.
 
-Prefix arguments with `country-sitemaps <country>` to read local sitemap
+Prefix arguments with `country-sitemaps <country>` to run the WARC-backed
+sitemap-link pipeline, keep only matching rows for one country, and write them
+to `target/filtered-sitemaps/country/<country>` by default. This subcommand
+accepts a country key, country name, or suffix from the vendored suffix database,
+uses the default `robotstxt.paths.gz` manifest when the URL is omitted, supports
+`--max-files N`, and defaults to `local-cluster[1,1,200]`.
+
+Prefix arguments with `local-country-sitemaps <country>` to read local sitemap
 TSV files from `target/commoncrawl-sitemaps` by default and write only matching
 rows for one country to `target/filtered-sitemaps/country/<country>`. This
-subcommand accepts a country key, country name, or suffix from the vendored
-suffix database and also defaults to `local[*]`.
+local subcommand defaults to `local[*]`.
 
 Prefix arguments with `download-sitemaps` to read local or filtered sitemap TSV
 files from `target/filtered-sitemaps` by default, download each sitemap URL with
@@ -245,7 +258,8 @@ target/filtered-sitemaps/country/anguilla/part-00000.sitemaps.tsv
 ```
 
 Rows may come from `local-sitemaps` or `filter-sitemaps`; the fourth TSV field
-is treated as the seed sitemap URL. Each seed sitemap is downloaded to a
+or directly from `country-sitemaps`; the fourth TSV field is treated as the seed
+sitemap URL. Each seed sitemap is downloaded to a
 temporary file with sttp, gzip-compressed sitemap files are decoded, and the
 content is validated as a Sitemap `urlset`, Sitemap `sitemapindex`, plain text
 URL list, RSS feed, or Atom feed. Sitemap indexes are followed recursively, and
@@ -355,9 +369,13 @@ language-region group. Country classification uses the robots host field first
 and falls back to the sitemap URL host when the robots host is unknown or not in
 the target suffix set.
 
-`country-sitemaps` uses the same classifier, but restricts matching to one
-selected country and writes downloader-compatible `part-*.sitemaps.tsv` files
-directly under the requested output directory.
+`CommonCrawlCountrySitemapsPipeline` runs directly from a
+`robotstxt.paths.gz` manifest. Each Spark task downloads one robots WARC archive
+to a temporary file, parses valid `/robots.txt` captures, keeps only sitemap
+links matching the selected country, and writes downloader-compatible
+`archive-<hash>.sitemaps.tsv` files under the requested output directory. This
+skips the intermediate robots.txt output directory and the all-sitemaps TSV
+directory.
 
 ## Build And Validation
 
@@ -370,7 +388,8 @@ sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
-sbt -Dsbt.batch=true "run country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
+sbt -Dsbt.batch=true "run country-sitemaps ukraine https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/filtered-sitemaps/country/ukraine --max-files 5000"
+sbt -Dsbt.batch=true "run local-country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
 sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
@@ -420,6 +439,9 @@ docker run --rm cc-robots-download-spark
   writes.
 - `src/main/scala/CommonCrawlSitemapsPipeline.scala`: Spark pipeline that parses
   usable robots.txt captures and writes extracted sitemap links as TSV rows.
+- `src/main/scala/CommonCrawlCountrySitemapsPipeline.scala`: Spark pipeline that
+  downloads robots WARC archives and writes selected-country sitemap links as
+  TSV rows without writing intermediate robots.txt files.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
   locally saved robots.txt files and writes extracted sitemap links as TSV rows.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads

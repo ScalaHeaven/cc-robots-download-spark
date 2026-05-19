@@ -22,6 +22,7 @@ enum PipelineMode:
   case Sitemaps
   case LocalSitemaps
   case FilterSitemaps
+  case LocalCountrySitemaps
   case CountrySitemaps
   case DownloadSitemaps
 
@@ -103,8 +104,28 @@ object Cli {
               defaultMaster = DefaultLocalSitemapsMaster,
               downloadTimeouts = downloadTimeouts
             )
+          case "local-country-sitemaps" :: remaining =>
+            parseCountrySitemapsConfig(
+              remaining,
+              maxFiles,
+              downloadTimeouts,
+              pipeline = PipelineMode.LocalCountrySitemaps,
+              defaultInputPath = DefaultSitemapsOutputPath,
+              defaultMaster = DefaultLocalSitemapsMaster,
+              allowMaxFiles = false,
+              commandName = "local-country-sitemaps"
+            )
           case "country-sitemaps" :: remaining =>
-            parseCountrySitemapsConfig(remaining, maxFiles, downloadTimeouts)
+            parseCountrySitemapsConfig(
+              remaining,
+              maxFiles,
+              downloadTimeouts,
+              pipeline = PipelineMode.CountrySitemaps,
+              defaultInputPath = DefaultPathsUrl,
+              defaultMaster = DefaultMaster,
+              allowMaxFiles = true,
+              commandName = "country-sitemaps"
+            )
           case "download-sitemaps" :: remaining =>
             parseLocalRunConfig(
               remaining,
@@ -230,7 +251,7 @@ object Cli {
     maxFiles match {
       case Some(_) =>
         Left(
-          s"--max-files is only supported for robots and sitemaps runs.\n\n$usage"
+          s"--max-files is only supported for robots, sitemaps, and country-sitemaps runs.\n\n$usage"
         )
       case None =>
         parseRunConfig(
@@ -247,25 +268,43 @@ object Cli {
   private def parseCountrySitemapsConfig(
       args: List[String],
       maxFiles: Option[Int],
-      downloadTimeouts: DownloadTimeoutConfig
+      downloadTimeouts: DownloadTimeoutConfig,
+      pipeline: PipelineMode,
+      defaultInputPath: String,
+      defaultMaster: String,
+      allowMaxFiles: Boolean,
+      commandName: String
   ): Either[String, CliCommand] =
     args match {
       case country :: remaining if country.trim.nonEmpty =>
         val defaultOutputPath =
           s"$DefaultFilteredSitemapsOutputPath/country/${countryPathKey(country)}"
 
-        parseLocalRunConfig(
-          remaining,
-          maxFiles,
-          defaultOutputPath,
-          PipelineMode.CountrySitemaps,
-          defaultInputPath = DefaultSitemapsOutputPath,
-          defaultMaster = DefaultLocalSitemapsMaster,
-          downloadTimeouts = downloadTimeouts,
-          countryFilter = Some(country)
-        )
+        if (allowMaxFiles) {
+          parseRunConfig(
+            remaining,
+            defaultOutputPath,
+            pipeline,
+            defaultInputPath = defaultInputPath,
+            defaultMaster = defaultMaster,
+            maxFiles = maxFiles,
+            downloadTimeouts = downloadTimeouts,
+            countryFilter = Some(country)
+          )
+        } else {
+          parseLocalRunConfig(
+            remaining,
+            maxFiles,
+            defaultOutputPath,
+            pipeline,
+            defaultInputPath = defaultInputPath,
+            defaultMaster = defaultMaster,
+            downloadTimeouts = downloadTimeouts,
+            countryFilter = Some(country)
+          )
+        }
       case _ =>
-        Left(s"country-sitemaps requires a country key.\n\n$usage")
+        Left(s"$commandName requires a country key.\n\n$usage")
     }
 
   private def splitOptions(
@@ -384,7 +423,8 @@ object Cli {
        |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
        |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
        |  sbt "run filter-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
-       |  sbt "run country-sitemaps <country> [sitemaps_dir] [output_dir] [spark_master]"
+       |  sbt "run country-sitemaps <country> [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
+       |  sbt "run local-country-sitemaps <country> [sitemaps_dir] [output_dir] [spark_master]"
        |  sbt "run download-sitemaps [sitemaps_dir] [output_dir] [spark_master] [timeout options]"
        |
        |Defaults:
@@ -399,7 +439,8 @@ object Cli {
        |  spark_master          $DefaultMaster
        |  local-sitemaps master $DefaultLocalSitemapsMaster
        |  filter-sitemaps master $DefaultLocalSitemapsMaster
-       |  country-sitemaps master $DefaultLocalSitemapsMaster
+       |  country-sitemaps master $DefaultMaster
+       |  local-country-sitemaps master $DefaultLocalSitemapsMaster
        |  download-sitemaps master $DefaultLocalSitemapsMaster
        |  download connect timeout ${DefaultDownloadTimeouts.connectTimeoutSeconds}s
        |  download read timeout ${DefaultDownloadTimeouts.readTimeoutSeconds}s

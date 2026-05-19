@@ -38,6 +38,14 @@ class CliSuite extends munit.FunSuite {
 
     assert(command.isLeft)
     assert(command.left.exists(_.contains("only supported for robots")))
+
+    val localCountryCommand =
+      Cli.parseArgs(
+        Array("local-country-sitemaps", "ukraine", "--max-files", "1")
+      )
+
+    assert(localCountryCommand.isLeft)
+    assert(localCountryCommand.left.exists(_.contains("country-sitemaps")))
   }
 
   test("parses download sitemaps command") {
@@ -70,8 +78,10 @@ class CliSuite extends munit.FunSuite {
       Array(
         "country-sitemaps",
         "united-kingdom",
-        "target/commoncrawl-sitemaps",
-        "target/filtered-sitemaps/country/united-kingdom"
+        "https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz",
+        "target/filtered-sitemaps/country/united-kingdom",
+        "--max-files",
+        "5000"
       )
     )
 
@@ -80,11 +90,11 @@ class CliSuite extends munit.FunSuite {
       Right(
         CliCommand.Run(
           JobConfig(
-            "target/commoncrawl-sitemaps",
+            "https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz",
             "target/filtered-sitemaps/country/united-kingdom",
-            Cli.DefaultLocalSitemapsMaster,
+            Cli.DefaultMaster,
             PipelineMode.CountrySitemaps,
-            None,
+            Some(5000),
             countryFilter = Some("united-kingdom")
           )
         )
@@ -99,9 +109,35 @@ class CliSuite extends munit.FunSuite {
       command.map(runConfigForCountry),
       Right(
         (
-          "target/commoncrawl-sitemaps",
+          PipelineMode.CountrySitemaps,
+          Cli.DefaultPathsUrl,
           "target/filtered-sitemaps/country/united-kingdom",
-          Some("United Kingdom")
+          Some("United Kingdom"),
+          None
+        )
+      )
+    )
+  }
+
+  test("parses local country sitemaps command") {
+    val command = Cli.parseArgs(
+      Array(
+        "local-country-sitemaps",
+        "ukraine",
+        "target/commoncrawl-sitemaps",
+        "target/filtered-sitemaps/country/ukraine"
+      )
+    )
+
+    assertEquals(
+      command.map(runConfigForCountry),
+      Right(
+        (
+          PipelineMode.LocalCountrySitemaps,
+          "target/commoncrawl-sitemaps",
+          "target/filtered-sitemaps/country/ukraine",
+          Some("ukraine"),
+          None
         )
       )
     )
@@ -160,10 +196,16 @@ class CliSuite extends munit.FunSuite {
 
   private def runConfigForCountry(
       command: CliCommand
-  ): (String, String, Option[String]) =
+  ): (PipelineMode, String, String, Option[String], Option[Int]) =
     command match {
       case CliCommand.Run(config) =>
-        (config.pathsUrl, config.outputPath, config.countryFilter)
+        (
+          config.pipeline,
+          config.pathsUrl,
+          config.outputPath,
+          config.countryFilter,
+          config.maxFiles
+        )
       case CliCommand.ShowUsage =>
         fail("expected run config")
     }

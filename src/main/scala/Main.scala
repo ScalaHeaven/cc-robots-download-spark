@@ -28,8 +28,10 @@ object Main {
               LocalRobotsSitemapsPipeline.run(spark, config)
             case PipelineMode.FilterSitemaps =>
               LocalSitemapsFilterPipeline.run(spark, config)
-            case PipelineMode.CountrySitemaps =>
+            case PipelineMode.LocalCountrySitemaps =>
               LocalSitemapsFilterPipeline.runCountry(spark, config)
+            case PipelineMode.CountrySitemaps =>
+              CommonCrawlCountrySitemapsPipeline.run(spark, config)
             case PipelineMode.DownloadSitemaps =>
               LocalSitemapDownloadPipeline.run(spark, config)
           }
