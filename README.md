@@ -82,23 +82,23 @@ To apply the same one-country filter to existing local sitemap TSV files:
 sbt -Dsbt.batch=true "run local-country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
 ```
 
-To download sitemap XML files from a filtered sitemap TSV folder and extract
-page links:
+To download sitemap XML files from a filtered or country sitemap TSV output
+folder and extract page links:
 
 ```bash
-sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links"
 ```
 
 To tune HTTP timeouts for sitemap XML downloads:
 
 ```bash
-sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links --download-connect-timeout-seconds 5 --download-read-timeout-seconds 15"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links --download-connect-timeout-seconds 5 --download-read-timeout-seconds 15"
 ```
 
 To run that downloader on one local Spark worker thread:
 
 ```bash
-sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links local[1]"
 ```
 
 The app also accepts a sibling `wat.paths.gz` URL and resolves it to
@@ -150,13 +150,14 @@ TSV files from `target/commoncrawl-sitemaps` by default and write only matching
 rows for one country to `target/filtered-sitemaps/country/<country>`. This
 local subcommand defaults to `local[*]`.
 
-Prefix arguments with `download-sitemaps` to read local or filtered sitemap TSV
-files from `target/filtered-sitemaps` by default, download each sitemap URL with
-sttp, validate sitemap XML, follow sitemap indexes, and write extracted page
-links to `target/downloaded-sitemap-links`. This subcommand defaults to
-`local[*]`; pass `local[1]` as the third argument to run on one local Spark
-worker thread. HTTP downloads use a 10 second connect timeout and a 30 second
-read timeout by default. Tune them with
+Prefix arguments with `download-sitemaps` to read local, filtered, or
+WARC-backed country sitemap TSV files from `target/filtered-sitemaps` by
+default, download each sitemap URL with sttp, validate sitemap XML, follow
+sitemap indexes, and write extracted page links to
+`target/downloaded-sitemap-links`. This subcommand defaults to `local[*]`; pass
+`local[1]` as the third argument to run on one local Spark worker thread. HTTP
+downloads use a 10 second connect timeout and a 30 second read timeout by
+default. Tune them with
 `--download-connect-timeout-seconds N` and
 `--download-read-timeout-seconds N`.
 
@@ -251,15 +252,16 @@ as `en-gb`, `en-uk`, and `gb`. Rows without a marker are written to
 language from page content.
 
 The sitemap downloader reads `*.sitemaps.tsv` files from the requested folder,
-including grouped paths such as:
+including grouped or WARC-backed country paths such as:
 
 ```text
 target/filtered-sitemaps/country/anguilla/part-00000.sitemaps.tsv
+target/filtered-sitemaps/country/ukraine/archive-a1b2c3d4e5f60789.sitemaps.tsv
 ```
 
-Rows may come from `local-sitemaps` or `filter-sitemaps`; the fourth TSV field
-or directly from `country-sitemaps`; the fourth TSV field is treated as the seed
-sitemap URL. Each seed sitemap is downloaded to a
+Rows may come from `local-sitemaps`, `filter-sitemaps`,
+`local-country-sitemaps`, or directly from `country-sitemaps`; the fourth TSV
+field is treated as the seed sitemap URL. Each seed sitemap is downloaded to a
 temporary file with sttp, gzip-compressed sitemap files are decoded, and the
 content is validated as a Sitemap `urlset`, Sitemap `sitemapindex`, plain text
 URL list, RSS feed, or Atom feed. Sitemap indexes are followed recursively, and
@@ -390,7 +392,7 @@ sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/common
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
 sbt -Dsbt.batch=true "run country-sitemaps ukraine https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/filtered-sitemaps/country/ukraine --max-files 5000"
 sbt -Dsbt.batch=true "run local-country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
-sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links local[1]"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
 ```

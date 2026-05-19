@@ -319,7 +319,7 @@ object LocalSitemapDownloadPipeline {
     }
   }
 
-  private def parseSitemapInputRow(
+  def parseSitemapInputRow(
       line: String
   ): Option[SitemapDownloadInputRow] =
     line.split("\t", -1).toVector match {

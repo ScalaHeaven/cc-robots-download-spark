@@ -54,6 +54,10 @@ just application code.
   sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows by
   the vendored country suffix database, and writes grouped country,
   language-region, or selected-country TSV files.
+- `src/main/scala/LocalSitemapDownloadPipeline.scala`: recursively reads local,
+  filtered, and WARC-backed country `*.sitemaps.tsv` files, treats the fourth
+  TSV field as the seed sitemap URL, downloads sitemap XML files, follows
+  sitemap indexes, and writes extracted page URLs to per-partition TSV files.
 - `src/main/scala/SitemapCountryLocaleClassifier.scala`: pure country suffix
   and URL marker classifier used by the local sitemap filter and unit tests.
 - `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
@@ -108,6 +112,7 @@ sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/common
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
 sbt -Dsbt.batch=true "run country-sitemaps ukraine https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/filtered-sitemaps/country/ukraine --max-files 5000"
 sbt -Dsbt.batch=true "run local-country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links local[1]"
 sbt -Dsbt.batch=true assembly
 docker build -t cc-robots-download-spark .
 docker run --rm cc-robots-download-spark
@@ -313,6 +318,8 @@ The repository currently supports:
 - writing locally extracted sitemap links as per-partition TSV files
 - filtering local sitemap TSV rows by vendored country suffixes with grouped
   country, language-region, and selected-country output
+- downloading sitemap XML from local, filtered, and WARC-backed country sitemap
+  TSV rows and writing extracted page URLs
 - producing a fat JAR with `sbt-assembly`
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals
