@@ -21,7 +21,10 @@ object CommonCrawlSitemapsPipeline {
     val manifestUrl =
       CommonCrawlRobotsArchiveSupport.resolveManifestUrl(config.pathsUrl)
     val allArchivePaths =
-      CommonCrawlRobotsArchiveSupport.readArchivePaths(manifestUrl)
+      CommonCrawlRobotsArchiveSupport.readArchivePaths(
+        manifestUrl,
+        config.downloadPolicy
+      )
     val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
       allArchivePaths.take(maxFiles)
     }
@@ -33,7 +36,11 @@ object CommonCrawlSitemapsPipeline {
     val results = spark.sparkContext
       .parallelize(archivePaths, archivePaths.size.max(1))
       .map(archivePath =>
-        downloadAndExtractSitemaps(archivePath, outputDirString)
+        downloadAndExtractSitemaps(
+          archivePath,
+          outputDirString,
+          config.downloadPolicy
+        )
       )
       .collect()
 
@@ -54,6 +61,11 @@ object CommonCrawlSitemapsPipeline {
     println(
       s"Rejected $rejectedFiles robots.txt captures without usable robots directives"
     )
+    println(
+      CommonCrawlRobotsArchiveSupport.downloadPolicySummary(
+        config.downloadPolicy
+      )
+    )
     println(s"Saved $savedSitemapLinks sitemap links into $outputDir")
 
     if (failures.nonEmpty) {
@@ -70,7 +82,8 @@ object CommonCrawlSitemapsPipeline {
 
   private def downloadAndExtractSitemaps(
       archivePath: String,
-      outputDir: String
+      outputDir: String,
+      policy: DownloadPolicyConfig
   ): SitemapArchiveResult =
     try {
       val archiveUri =
@@ -79,7 +92,11 @@ object CommonCrawlSitemapsPipeline {
         "commoncrawl-robotstxt-",
         ".warc.gz"
       ) { tempFile =>
-        CommonCrawlRobotsArchiveSupport.downloadToPath(archiveUri, tempFile)
+        CommonCrawlRobotsArchiveSupport.downloadToPath(
+          archiveUri,
+          tempFile,
+          policy
+        )
 
         val outputFile = Path
           .of(outputDir)

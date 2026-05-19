@@ -26,7 +26,10 @@ object CommonCrawlRobotsPipeline {
     val manifestUrl =
       CommonCrawlRobotsArchiveSupport.resolveManifestUrl(config.pathsUrl)
     val allArchivePaths =
-      CommonCrawlRobotsArchiveSupport.readArchivePaths(manifestUrl)
+      CommonCrawlRobotsArchiveSupport.readArchivePaths(
+        manifestUrl,
+        config.downloadPolicy
+      )
     val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
       allArchivePaths.take(maxFiles)
     }
@@ -38,7 +41,11 @@ object CommonCrawlRobotsPipeline {
     val results = spark.sparkContext
       .parallelize(archivePaths, archivePaths.size.max(1))
       .map(archivePath =>
-        downloadAndExtractArchive(archivePath, outputDirString)
+        downloadAndExtractArchive(
+          archivePath,
+          outputDirString,
+          config.downloadPolicy
+        )
       )
       .collect()
 
@@ -58,6 +65,11 @@ object CommonCrawlRobotsPipeline {
     println(
       s"Rejected $rejectedFiles robots.txt captures without usable robots directives"
     )
+    println(
+      CommonCrawlRobotsArchiveSupport.downloadPolicySummary(
+        config.downloadPolicy
+      )
+    )
 
     if (failures.nonEmpty) {
       failures.foreach { failure =>
@@ -73,7 +85,8 @@ object CommonCrawlRobotsPipeline {
 
   private def downloadAndExtractArchive(
       archivePath: String,
-      outputDir: String
+      outputDir: String,
+      policy: DownloadPolicyConfig
   ): ArchiveDownloadResult =
     try {
       val archiveUri =
@@ -82,7 +95,11 @@ object CommonCrawlRobotsPipeline {
         "commoncrawl-robotstxt-",
         ".warc.gz"
       ) { tempFile =>
-        CommonCrawlRobotsArchiveSupport.downloadToPath(archiveUri, tempFile)
+        CommonCrawlRobotsArchiveSupport.downloadToPath(
+          archiveUri,
+          tempFile,
+          policy
+        )
 
         val extractionResult =
           extractRobots(tempFile, Path.of(outputDir), archivePath)

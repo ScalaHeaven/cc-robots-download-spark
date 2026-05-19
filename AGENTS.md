@@ -32,9 +32,9 @@ just application code.
 - `src/main/scala/Main.scala`: Scala 3 Spark application entry point with the
   `Main` main class.
 - `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
-  manifest download, archive download, retry/backoff, download timeout, target
-  filtering, and HTTP body decoding helpers used by robots.txt archive
-  pipelines.
+  manifest download, archive download, polite HTTP delay, retry/backoff,
+  download timeout, target filtering, and HTTP body decoding helpers used by
+  robots.txt archive pipelines.
 - `src/main/scala/CommonCrawlRobotsPipeline.scala`: parallelizes listed
   `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses WARC
   responses with jwarc, validates robots.txt payloads, and saves valid
@@ -71,8 +71,9 @@ just application code.
   Supports `--max-files N` for WARC-backed robots, sitemaps, and
   country-sitemaps runs to cap manifest archive files before Spark downloads
   begin. Supports
-  `--download-connect-timeout-seconds N` and
-  `--download-read-timeout-seconds N` for controlled HTTP downloads.
+  `--download-connect-timeout-seconds N`,
+  `--download-read-timeout-seconds N`, and
+  `--download-delay-seconds N` for controlled HTTP downloads.
   `local-sitemaps`, `filter-sitemaps`, `local-country-sitemaps`, and
   `download-sitemaps` default to `local[*]`; WARC-backed `country-sitemaps`
   defaults to the standalone local cluster.
@@ -149,8 +150,9 @@ sbt -Dsbt.batch=true scalafmtAll
 - Keep sitemap country filtering deterministic and offline. Update the vendored
   suffix database and tests together if target country suffixes change.
 - Use sttp for HTTP downloads and keep downloads streaming to files rather than
-  buffering archive contents in memory. Preserve retry/backoff behavior for
-  transient download failures.
+  buffering archive contents in memory. Preserve the one-second default HTTP
+  request delay, Common Crawl 403 rate-limit retries, and retry/backoff behavior
+  for transient download failures.
 - Use jwarc for WARC parsing instead of ad hoc string parsing.
 - Update `README.md` whenever commands, tool versions, archive handling, startup
   behavior, or the mental model for users changes.
@@ -307,6 +309,7 @@ The repository currently supports:
 - downloading Common Crawl `robotstxt.paths.gz` manifests
 - streaming listed robotstxt WARC archives in parallel with Spark and sttp
 - controlling HTTP download connect and read timeouts for sitemap downloads
+- applying a default one-second HTTP request delay across download commands
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
 - extracting `Sitemap:` links from locally saved robots.txt payload files

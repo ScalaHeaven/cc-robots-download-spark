@@ -17,8 +17,18 @@ import scala.util.Using
 
 object CommonCrawlRobotsArchiveSupport {
   private val CommonCrawlBaseUri = URI.create("https://data.commoncrawl.org/")
-  private val DownloadMaxAttempts = 4
-  private val DownloadInitialBackoffMillis = 500L
+  private val DefaultDownloadMaxAttempts = 4
+  private val CommonCrawlDownloadMaxAttempts = 1000
+  private val DownloadRetryDelayMillis = 1000L
+  private val DownloadMaxBackoffMillis = 30_000L
+  private val CommonCrawlDownloadHosts =
+    Set(
+      "data.commoncrawl.org",
+      "ds5q9oxwqwsfj.cloudfront.net",
+      "commoncrawl.s3.amazonaws.com"
+    )
+  private val TransientHttpStatusCodes =
+    Set(408, 425, 429, 500, 502, 503, 504)
   private val UserAgent = "spark-scala3-commoncrawl-robots/0.1"
 
   def resolveManifestUrl(pathsUrl: String): URI = {
@@ -32,9 +42,12 @@ object CommonCrawlRobotsArchiveSupport {
     }
   }
 
-  def readArchivePaths(manifestUrl: URI): Vector[String] =
+  def readArchivePaths(
+      manifestUrl: URI,
+      policy: DownloadPolicyConfig = Cli.DefaultDownloadPolicy
+  ): Vector[String] =
     withTempFile("commoncrawl-robotstxt-paths-", ".gz") { manifestFile =>
-      downloadToPath(manifestUrl, manifestFile)
+      downloadToPath(manifestUrl, manifestFile, policy)
 
       Using.Manager { use =>
         val responseBody = use(Files.newInputStream(manifestFile))
@@ -90,7 +103,7 @@ object CommonCrawlRobotsArchiveSupport {
   def downloadToPath(
       uri: URI,
       destination: Path,
-      timeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts
+      policy: DownloadPolicyConfig = Cli.DefaultDownloadPolicy
   ): Path =
     Option(uri.getScheme()).map(_.toLowerCase(Locale.ROOT)) match {
       case Some("file") =>
@@ -101,7 +114,7 @@ object CommonCrawlRobotsArchiveSupport {
         )
         destination
       case Some("http" | "https") =>
-        downloadHttpToPathWithRetries(uri, destination, timeouts)
+        downloadHttpToPathWithRetries(uri, destination, policy)
       case Some(scheme) =>
         throw IOException(s"Unsupported URI scheme: $scheme")
       case None =>
@@ -129,6 +142,12 @@ object CommonCrawlRobotsArchiveSupport {
   def safePathPart(value: String): String =
     value.replaceAll("[^A-Za-z0-9._-]", "_")
 
+  def downloadPolicySummary(policy: DownloadPolicyConfig): String =
+    "Used HTTP download policy: " +
+      s"connect=${policy.connectTimeoutSeconds}s, " +
+      s"read=${policy.readTimeoutSeconds}s, " +
+      s"delay=${policy.delaySeconds}s"
+
   def sha256Hex(value: String): String = {
     val digest = MessageDigest.getInstance("SHA-256")
     digest
@@ -140,50 +159,146 @@ object CommonCrawlRobotsArchiveSupport {
   private def downloadHttpToPathWithRetries(
       uri: URI,
       destination: Path,
-      timeouts: DownloadTimeoutConfig
-  ): Path =
+      policy: DownloadPolicyConfig
+  ): Path = {
+    val maxAttempts = downloadMaxAttemptsFor(uri)
+
     @tailrec
     def attempt(attemptNumber: Int, backoffMillis: Long): Path =
       try {
-        downloadHttpToPath(uri, destination, timeouts)
+        downloadHttpToPath(uri, destination, policy)
       } catch {
+        case exception: HttpDownloadStatusException if !exception.retryable =>
+          Files.deleteIfExists(destination)
+          throw exception
+
         case exception: Exception =>
           Files.deleteIfExists(destination)
 
-          if (attemptNumber == DownloadMaxAttempts) {
+          if (attemptNumber == maxAttempts) {
             throw IOException(
-              s"GET $uri failed after $DownloadMaxAttempts attempts",
+              s"GET $uri failed after $maxAttempts attempts",
               exception
             )
           }
 
           Thread.sleep(backoffMillis)
-          attempt(attemptNumber + 1, backoffMillis * 2)
+          attempt(
+            attemptNumber + 1,
+            nextBackoffMillis(uri, backoffMillis)
+          )
       }
 
-    attempt(attemptNumber = 1, DownloadInitialBackoffMillis)
+    attempt(attemptNumber = 1, DownloadRetryDelayMillis)
+  }
 
   private def downloadHttpToPath(
       uri: URI,
       destination: Path,
-      timeouts: DownloadTimeoutConfig
+      policy: DownloadPolicyConfig
   ): Path = {
     val backend = HttpClientSyncBackend(
       options = SttpBackendOptions.connectionTimeout(
-        timeouts.connectTimeoutSeconds.seconds
+        policy.connectTimeoutSeconds.seconds
       )
     )
 
     try {
-      basicRequest
+      HttpDownloadDelay.waitBeforeRequest(policy)
+
+      val response = basicRequest
         .get(sttp.model.Uri.unsafeParse(uri.toString))
         .header("User-Agent", UserAgent)
-        .readTimeout(timeouts.readTimeoutSeconds.seconds)
-        .response(asPath(destination).getRight)
+        .readTimeout(policy.readTimeoutSeconds.seconds)
+        .response(asPath(destination))
         .send(backend)
-        .body
+
+      response.body match {
+        case Right(downloadedPath) =>
+          downloadedPath
+        case Left(errorBody) =>
+          Files.deleteIfExists(destination)
+          throw HttpDownloadStatusException(
+            uri,
+            response.code.code,
+            response.statusText,
+            errorBody,
+            retryableStatusCode(uri, response.code.code)
+          )
+      }
     } finally {
       backend.close()
+    }
+  }
+
+  private def downloadMaxAttemptsFor(uri: URI): Int =
+    if (isCommonCrawlDownloadUri(uri)) {
+      CommonCrawlDownloadMaxAttempts
+    } else {
+      DefaultDownloadMaxAttempts
+    }
+
+  private def nextBackoffMillis(uri: URI, currentBackoffMillis: Long): Long =
+    if (isCommonCrawlDownloadUri(uri)) {
+      DownloadRetryDelayMillis
+    } else {
+      (currentBackoffMillis * 2).min(DownloadMaxBackoffMillis)
+    }
+
+  private def retryableStatusCode(uri: URI, statusCode: Int): Boolean =
+    TransientHttpStatusCodes.contains(statusCode) ||
+      (statusCode == 403 && isCommonCrawlDownloadUri(uri))
+
+  private def isCommonCrawlDownloadUri(uri: URI): Boolean =
+    Option(uri.getHost())
+      .map(_.toLowerCase(Locale.ROOT))
+      .exists(CommonCrawlDownloadHosts.contains)
+
+  private final case class HttpDownloadStatusException(
+      uri: URI,
+      statusCode: Int,
+      statusText: String,
+      body: String,
+      retryable: Boolean
+  ) extends IOException(
+        httpStatusMessage(uri, statusCode, statusText, body, retryable)
+      )
+
+  private def httpStatusMessage(
+      uri: URI,
+      statusCode: Int,
+      statusText: String,
+      body: String,
+      retryable: Boolean
+  ): String = {
+    val details = body.linesIterator.take(3).mkString(" ").take(240)
+    val retryText =
+      if (retryable) "retryable HTTP response"
+      else "non-retryable HTTP response"
+    val detailText = if (details.nonEmpty) s": $details" else ""
+
+    s"GET $uri returned $statusCode $statusText ($retryText)$detailText"
+  }
+}
+
+private object HttpDownloadDelay {
+  private var nextRequestStartMillis = 0L
+
+  def waitBeforeRequest(policy: DownloadPolicyConfig): Unit = {
+    val delayMillis = policy.delaySeconds.toLong * 1000L
+
+    if (delayMillis > 0) {
+      val waitMillis = synchronized {
+        val now = System.currentTimeMillis()
+        val scheduledStart = nextRequestStartMillis.max(now)
+        nextRequestStartMillis = scheduledStart + delayMillis
+
+        scheduledStart - now
+      }
+
+      if (waitMillis > 0) {
+        Thread.sleep(waitMillis)
+      }
     }
   }
 }

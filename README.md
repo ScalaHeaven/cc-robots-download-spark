@@ -16,9 +16,9 @@ This repository gives you:
 
 The app streams a Common Crawl `robotstxt.paths.gz` manifest to a temporary
 file with sttp, reads the archive paths inside it, launches Spark jobs to stream
-the listed `robotstxt/*.warc.gz` archives in parallel with retry/backoff, and
-can either save usable robots.txt payloads or extract sitemap links from parsed
-robots.txt files.
+the listed `robotstxt/*.warc.gz` archives in parallel with a polite HTTP
+download delay and retry policy, and can either save usable robots.txt payloads
+or extract sitemap links from parsed robots.txt files.
 
 ## Quick Start
 
@@ -89,10 +89,10 @@ folder and extract page links:
 sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links"
 ```
 
-To tune HTTP timeouts for sitemap XML downloads:
+To tune the HTTP download policy for any command:
 
 ```bash
-sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links --download-connect-timeout-seconds 5 --download-read-timeout-seconds 15"
+sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links --download-connect-timeout-seconds 5 --download-read-timeout-seconds 15 --download-delay-seconds 2"
 ```
 
 To run that downloader on one local Spark worker thread:
@@ -156,10 +156,19 @@ default, download each sitemap URL with sttp, validate sitemap XML, follow
 sitemap indexes, and write extracted page links to
 `target/downloaded-sitemap-links`. This subcommand defaults to `local[*]`; pass
 `local[1]` as the third argument to run on one local Spark worker thread. HTTP
-downloads use a 10 second connect timeout and a 30 second read timeout by
-default. Tune them with
+downloads use a 10 second connect timeout, a 30 second read timeout, and a
+1 second minimum delay between request starts in each JVM by default. Tune them
+with
 `--download-connect-timeout-seconds N` and
-`--download-read-timeout-seconds N`.
+`--download-read-timeout-seconds N`, and tune the delay with
+`--download-delay-seconds N`.
+
+The same HTTP download policy applies to every command that performs downloads,
+including manifest reads, Common Crawl archive downloads, and sitemap XML
+downloads. Common Crawl data hosts are treated specially: HTTP 403 responses
+from those hosts are considered rate-limit responses and are retried up to 1000
+times with a one-second retry delay. Other HTTP downloads still retry transient
+status codes such as 429 and 5xx, but use the shorter four-attempt retry path.
 
 `local-cluster[1,1,200]` starts one local standalone master and 1 worker
 JVMs. Each worker has one core and 200 MiB of worker memory. Executors are
@@ -309,10 +318,12 @@ used directly. When `--max-files N` is set, only the first `N` matching archive
 paths are handed to Spark.
 
 Spark receives the filtered archive path list with one partition per archive
-path. Each worker downloads its assigned archive to a temporary `.warc.gz` file,
-retrying HTTP downloads up to four times with exponential backoff. Local
-`file:` URIs and plain local paths are also supported, which is useful for
-small manual tests.
+path. Each worker downloads its assigned archive to a temporary `.warc.gz` file.
+HTTP request starts are spaced by the configured per-JVM delay. Common Crawl
+data-host downloads retry rate-limit and transient failures up to 1000 times
+with a one-second retry delay; other HTTP downloads retry transient failures up
+to four times with exponential backoff. Local `file:` URIs and plain local paths
+are also supported, which is useful for small manual tests.
 
 Each downloaded archive is parsed with jwarc in lenient mode. The pipeline
 keeps only `WarcResponse` records whose target URI path ends with
@@ -429,13 +440,13 @@ docker run --rm cc-robots-download-spark
   `sbt run` heap; and builds `app.jar` with `sbt-assembly`.
 - `src/main/scala/Main.scala`: application entry point.
 - `src/main/scala/Cli.scala`: argument parsing, runtime defaults, and download
-  timeout options.
+  policy options.
 - `src/main/scala/SparkSessionFactory.scala`: Spark session construction,
   local-cluster driver binding, executor memory, Java module options, and
   Scala library classpath handling for executor RPC serialization.
 - `src/main/scala/CommonCrawlRobotsArchiveSupport.scala`: shared Common Crawl
-  manifest, archive download, retry/backoff, target filtering, and HTTP body
-  decoding helpers, including HTTP connect and read timeout handling.
+  manifest, archive download, delay, retry/backoff, target filtering, and HTTP
+  body decoding helpers, including HTTP connect and read timeout handling.
 - `src/main/scala/CommonCrawlRobotsPipeline.scala`: Spark parallel archive
   extraction, WARC parsing, robots.txt validation, and usable robots.txt file
   writes.

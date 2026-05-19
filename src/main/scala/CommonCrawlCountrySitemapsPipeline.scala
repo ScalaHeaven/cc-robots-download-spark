@@ -41,7 +41,10 @@ object CommonCrawlCountrySitemapsPipeline {
     val manifestUrl =
       CommonCrawlRobotsArchiveSupport.resolveManifestUrl(config.pathsUrl)
     val allArchivePaths =
-      CommonCrawlRobotsArchiveSupport.readArchivePaths(manifestUrl)
+      CommonCrawlRobotsArchiveSupport.readArchivePaths(
+        manifestUrl,
+        config.downloadPolicy
+      )
     val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
       allArchivePaths.take(maxFiles)
     }
@@ -58,7 +61,8 @@ object CommonCrawlCountrySitemapsPipeline {
           archivePath,
           outputDirString,
           selectedCountry,
-          selectedSuffixes
+          selectedSuffixes,
+          config.downloadPolicy
         )
       )
       .collect()
@@ -79,6 +83,11 @@ object CommonCrawlCountrySitemapsPipeline {
     println(s"Parsed $parsedFiles usable robots.txt captures")
     println(
       s"Rejected $rejectedFiles robots.txt captures without usable robots directives"
+    )
+    println(
+      CommonCrawlRobotsArchiveSupport.downloadPolicySummary(
+        config.downloadPolicy
+      )
     )
     println(
       s"Saved $matchedSitemapLinks ${selectedCountry.countryName} sitemap links into $outputDir"
@@ -115,7 +124,8 @@ object CommonCrawlCountrySitemapsPipeline {
       archivePath: String,
       outputDir: String,
       selectedCountry: SelectedCountry,
-      suffixes: Vector[CountrySuffix]
+      suffixes: Vector[CountrySuffix],
+      policy: DownloadPolicyConfig
   ): CountrySitemapArchiveResult =
     try {
       val archiveUri =
@@ -124,7 +134,11 @@ object CommonCrawlCountrySitemapsPipeline {
         "commoncrawl-robotstxt-",
         ".warc.gz"
       ) { tempFile =>
-        CommonCrawlRobotsArchiveSupport.downloadToPath(archiveUri, tempFile)
+        CommonCrawlRobotsArchiveSupport.downloadToPath(
+          archiveUri,
+          tempFile,
+          policy
+        )
 
         val outputFile = Path
           .of(outputDir)

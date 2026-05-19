@@ -53,7 +53,7 @@ object LocalSitemapDownloadPipeline {
             partitionId,
             files.toVector,
             outputDirString,
-            config.downloadTimeouts
+            config.downloadPolicy
           )
         )
       }
@@ -74,9 +74,9 @@ object LocalSitemapDownloadPipeline {
     println(s"Rejected $invalidSitemaps invalid sitemap files")
     println(s"Failed to download $failedDownloads sitemap files")
     println(
-      "Used HTTP download timeouts: " +
-        s"connect=${config.downloadTimeouts.connectTimeoutSeconds}s, " +
-        s"read=${config.downloadTimeouts.readTimeoutSeconds}s"
+      CommonCrawlRobotsArchiveSupport.downloadPolicySummary(
+        config.downloadPolicy
+      )
     )
     println(s"Saved $savedLinks extracted sitemap links into $outputDir")
 
@@ -122,7 +122,7 @@ object LocalSitemapDownloadPipeline {
       partitionId: Int,
       inputFilePaths: Vector[String],
       outputDir: String,
-      timeouts: DownloadTimeoutConfig
+      policy: DownloadPolicyConfig
   ): LocalSitemapDownloadResult =
     try {
       val taskPartitionId = Option(TaskContext.get())
@@ -136,7 +136,7 @@ object LocalSitemapDownloadPipeline {
         taskPartitionId,
         inputFilePaths,
         outputFile,
-        timeouts
+        policy
       )
     } catch {
       case exception: Exception =>
@@ -156,7 +156,7 @@ object LocalSitemapDownloadPipeline {
       partitionId: Int,
       inputFilePaths: Vector[String],
       outputFile: Path,
-      timeouts: DownloadTimeoutConfig
+      policy: DownloadPolicyConfig
   ): LocalSitemapDownloadResult = {
     var readRows = 0
     var malformedRows = 0
@@ -195,7 +195,7 @@ object LocalSitemapDownloadPipeline {
             parseSitemapInputRow(line) match {
               case Some(row) =>
                 readRows += 1
-                val counters = processSeedSitemap(row, writeLink, timeouts)
+                val counters = processSeedSitemap(row, writeLink, policy)
                 downloadedSitemaps += counters.downloadedSitemaps
                 invalidSitemaps += counters.invalidSitemaps
                 failedDownloads += counters.failedDownloads
@@ -231,7 +231,7 @@ object LocalSitemapDownloadPipeline {
   private def processSeedSitemap(
       row: SitemapDownloadInputRow,
       writeLink: (SitemapDownloadInputRow, String, String) => Unit,
-      timeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts
+      policy: DownloadPolicyConfig = Cli.DefaultDownloadPolicy
   ): SitemapCounters = {
     var downloadedSitemaps = 0
     var invalidSitemaps = 0
@@ -245,7 +245,7 @@ object LocalSitemapDownloadPipeline {
 
       if (!visited.contains(sitemapUrl) && depth <= MaxSitemapIndexDepth) {
         visited += sitemapUrl
-        downloadAndParseSitemap(sitemapUrl, timeouts) match {
+        downloadAndParseSitemap(sitemapUrl, policy) match {
           case Success(document) =>
             downloadedSitemaps += 1
             val baseUri = URI.create(sitemapUrl)
@@ -281,7 +281,7 @@ object LocalSitemapDownloadPipeline {
 
   private def downloadAndParseSitemap(
       sitemapUrl: String,
-      timeouts: DownloadTimeoutConfig
+      policy: DownloadPolicyConfig
   ): Try[SitemapXmlDocument] =
     Try {
       CommonCrawlRobotsArchiveSupport.withTempFile(
@@ -291,7 +291,7 @@ object LocalSitemapDownloadPipeline {
         CommonCrawlRobotsArchiveSupport.downloadToPath(
           URI.create(sitemapUrl),
           tempFile,
-          timeouts
+          policy
         )
 
         Using.resource(decodedSitemapStream(tempFile)) { input =>
