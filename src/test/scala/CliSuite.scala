@@ -65,6 +65,48 @@ class CliSuite extends munit.FunSuite {
     )
   }
 
+  test("parses country sitemaps command") {
+    val command = Cli.parseArgs(
+      Array(
+        "country-sitemaps",
+        "united-kingdom",
+        "target/commoncrawl-sitemaps",
+        "target/filtered-sitemaps/country/united-kingdom"
+      )
+    )
+
+    assertEquals(
+      command,
+      Right(
+        CliCommand.Run(
+          JobConfig(
+            "target/commoncrawl-sitemaps",
+            "target/filtered-sitemaps/country/united-kingdom",
+            Cli.DefaultLocalSitemapsMaster,
+            PipelineMode.CountrySitemaps,
+            None,
+            countryFilter = Some("united-kingdom")
+          )
+        )
+      )
+    )
+  }
+
+  test("country sitemaps defaults output path from country key") {
+    val command = Cli.parseArgs(Array("country-sitemaps", "United Kingdom"))
+
+    assertEquals(
+      command.map(runConfigForCountry),
+      Right(
+        (
+          "target/commoncrawl-sitemaps",
+          "target/filtered-sitemaps/country/united-kingdom",
+          Some("United Kingdom")
+        )
+      )
+    )
+  }
+
   test("parses download timeout options") {
     val command = Cli.parseArgs(
       Array(
@@ -112,6 +154,16 @@ class CliSuite extends munit.FunSuite {
     command match {
       case CliCommand.Run(config) =>
         (config.pipeline, config.downloadTimeouts)
+      case CliCommand.ShowUsage =>
+        fail("expected run config")
+    }
+
+  private def runConfigForCountry(
+      command: CliCommand
+  ): (String, String, Option[String]) =
+    command match {
+      case CliCommand.Run(config) =>
+        (config.pathsUrl, config.outputPath, config.countryFilter)
       case CliCommand.ShowUsage =>
         fail("expected run config")
     }

@@ -1,3 +1,5 @@
+import java.util.Locale
+
 import scala.util.Try
 
 final case class DownloadTimeoutConfig(
@@ -11,7 +13,8 @@ final case class JobConfig(
     master: String,
     pipeline: PipelineMode,
     maxFiles: Option[Int] = None,
-    downloadTimeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts
+    downloadTimeouts: DownloadTimeoutConfig = Cli.DefaultDownloadTimeouts,
+    countryFilter: Option[String] = None
 )
 
 enum PipelineMode:
@@ -19,6 +22,7 @@ enum PipelineMode:
   case Sitemaps
   case LocalSitemaps
   case FilterSitemaps
+  case CountrySitemaps
   case DownloadSitemaps
 
 enum CliCommand:
@@ -99,6 +103,8 @@ object Cli {
               defaultMaster = DefaultLocalSitemapsMaster,
               downloadTimeouts = downloadTimeouts
             )
+          case "country-sitemaps" :: remaining =>
+            parseCountrySitemapsConfig(remaining, maxFiles, downloadTimeouts)
           case "download-sitemaps" :: remaining =>
             parseLocalRunConfig(
               remaining,
@@ -147,7 +153,8 @@ object Cli {
       defaultInputPath: String = DefaultPathsUrl,
       defaultMaster: String = DefaultMaster,
       maxFiles: Option[Int] = None,
-      downloadTimeouts: DownloadTimeoutConfig = DefaultDownloadTimeouts
+      downloadTimeouts: DownloadTimeoutConfig = DefaultDownloadTimeouts,
+      countryFilter: Option[String] = None
   ): Either[String, CliCommand] =
     args match {
       case Nil =>
@@ -159,7 +166,8 @@ object Cli {
               defaultMaster,
               pipeline,
               maxFiles,
-              downloadTimeouts
+              downloadTimeouts,
+              countryFilter
             )
           )
         )
@@ -172,7 +180,8 @@ object Cli {
               defaultMaster,
               pipeline,
               maxFiles,
-              downloadTimeouts
+              downloadTimeouts,
+              countryFilter
             )
           )
         )
@@ -185,7 +194,8 @@ object Cli {
               defaultMaster,
               pipeline,
               maxFiles,
-              downloadTimeouts
+              downloadTimeouts,
+              countryFilter
             )
           )
         )
@@ -198,7 +208,8 @@ object Cli {
               master,
               pipeline,
               maxFiles,
-              downloadTimeouts
+              downloadTimeouts,
+              countryFilter
             )
           )
         )
@@ -213,7 +224,8 @@ object Cli {
       pipeline: PipelineMode,
       defaultInputPath: String,
       defaultMaster: String,
-      downloadTimeouts: DownloadTimeoutConfig
+      downloadTimeouts: DownloadTimeoutConfig,
+      countryFilter: Option[String] = None
   ): Either[String, CliCommand] =
     maxFiles match {
       case Some(_) =>
@@ -227,8 +239,33 @@ object Cli {
           pipeline,
           defaultInputPath,
           defaultMaster,
-          downloadTimeouts = downloadTimeouts
+          downloadTimeouts = downloadTimeouts,
+          countryFilter = countryFilter
         )
+    }
+
+  private def parseCountrySitemapsConfig(
+      args: List[String],
+      maxFiles: Option[Int],
+      downloadTimeouts: DownloadTimeoutConfig
+  ): Either[String, CliCommand] =
+    args match {
+      case country :: remaining if country.trim.nonEmpty =>
+        val defaultOutputPath =
+          s"$DefaultFilteredSitemapsOutputPath/country/${countryPathKey(country)}"
+
+        parseLocalRunConfig(
+          remaining,
+          maxFiles,
+          defaultOutputPath,
+          PipelineMode.CountrySitemaps,
+          defaultInputPath = DefaultSitemapsOutputPath,
+          defaultMaster = DefaultLocalSitemapsMaster,
+          downloadTimeouts = downloadTimeouts,
+          countryFilter = Some(country)
+        )
+      case _ =>
+        Left(s"country-sitemaps requires a country key.\n\n$usage")
     }
 
   private def splitOptions(
@@ -330,6 +367,16 @@ object Cli {
     loop(args, Vector.empty, None, DefaultDownloadTimeouts)
   }
 
+  private def countryPathKey(country: String): String = {
+    val normalized = country.trim.toLowerCase(Locale.ROOT)
+    val key = normalized
+      .replaceAll("[^a-z0-9]+", "-")
+      .stripPrefix("-")
+      .stripSuffix("-")
+
+    if (key.nonEmpty) key else "country"
+  }
+
   def usage: String =
     s"""Usage:
        |  sbt "run [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
@@ -337,6 +384,7 @@ object Cli {
        |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
        |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
        |  sbt "run filter-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
+       |  sbt "run country-sitemaps <country> [sitemaps_dir] [output_dir] [spark_master]"
        |  sbt "run download-sitemaps [sitemaps_dir] [output_dir] [spark_master] [timeout options]"
        |
        |Defaults:
@@ -346,10 +394,12 @@ object Cli {
        |  robots output_dir     $DefaultOutputPath
        |  sitemaps output_dir   $DefaultSitemapsOutputPath
        |  filtered output_dir   $DefaultFilteredSitemapsOutputPath
+       |  country output_dir    $DefaultFilteredSitemapsOutputPath/country/<country>
        |  sitemap links output_dir $DefaultDownloadedSitemapLinksOutputPath
        |  spark_master          $DefaultMaster
        |  local-sitemaps master $DefaultLocalSitemapsMaster
        |  filter-sitemaps master $DefaultLocalSitemapsMaster
+       |  country-sitemaps master $DefaultLocalSitemapsMaster
        |  download-sitemaps master $DefaultLocalSitemapsMaster
        |  download connect timeout ${DefaultDownloadTimeouts.connectTimeoutSeconds}s
        |  download read timeout ${DefaultDownloadTimeouts.readTimeoutSeconds}s

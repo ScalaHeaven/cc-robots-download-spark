@@ -19,6 +19,11 @@ final case class SitemapClassification(
     languageRegion: String
 )
 
+final case class SelectedCountry(
+    countryKey: String,
+    countryName: String
+)
+
 object SitemapCountryLocaleClassifier {
   val UnknownLanguageRegion = "unknown"
 
@@ -88,6 +93,31 @@ object SitemapCountryLocaleClassifier {
       }
   }
 
+  def selectCountry(
+      query: String,
+      suffixes: Vector[CountrySuffix]
+  ): Option[SelectedCountry] = {
+    val normalizedQuery = normalizeCountryQuery(query)
+    val normalizedSuffix = normalizeSuffix(query)
+
+    suffixes
+      .find(suffix =>
+        normalizeCountryQuery(suffix.countryKey) == normalizedQuery ||
+          normalizeCountryQuery(suffix.countryName) == normalizedQuery ||
+          suffix.suffix == normalizedSuffix
+      )
+      .map(suffix => SelectedCountry(suffix.countryKey, suffix.countryName))
+  }
+
+  def countrySuffixes(
+      selectedCountry: SelectedCountry,
+      suffixes: Vector[CountrySuffix]
+  ): Vector[CountrySuffix] =
+    suffixes.filter(_.countryKey == selectedCountry.countryKey).distinct
+
+  def supportedCountryKeys(suffixes: Vector[CountrySuffix]): Vector[String] =
+    suffixes.map(_.countryKey).distinct.sorted
+
   def detectLanguageRegion(sitemapUrl: String): Option[String] = {
     val tokens = extractHost(sitemapUrl).toVector.flatMap(hostLocaleTokens) ++
       extractPath(sitemapUrl).toVector.flatMap(localeTokens)
@@ -142,6 +172,13 @@ object SitemapCountryLocaleClassifier {
     val withoutDot = suffix.trim.stripPrefix(".")
     s".${normalizeHost(withoutDot)}"
   }
+
+  private def normalizeCountryQuery(country: String): String =
+    country.trim
+      .toLowerCase(Locale.ROOT)
+      .replaceAll("[^a-z0-9]+", "-")
+      .stripPrefix("-")
+      .stripSuffix("-")
 
   private def normalizeHost(host: String): String = {
     val withoutTrailingDot = host.trim.stripSuffix(".")

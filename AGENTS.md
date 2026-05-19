@@ -47,24 +47,26 @@ just application code.
   saved robots.txt files, parses valid payloads with Spark, and writes extracted
   `Sitemap:` links to per-partition TSV files.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: recursively reads local
-  sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows to
-  Ukraine, Russia, and UK domains, and writes grouped country and
-  language-region TSV files.
+  sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows by
+  the vendored country suffix database, and writes grouped country,
+  language-region, or selected-country TSV files.
 - `src/main/scala/SitemapCountryLocaleClassifier.scala`: pure country suffix
   and URL marker classifier used by the local sitemap filter and unit tests.
 - `src/main/resources/sitemap-filter/country-suffixes.tsv`: vendored country
-  suffix database for Ukraine, Russia, and United Kingdom matching. Keep this
+  suffix database for deterministic offline country matching. Keep this
   deterministic and offline unless the runtime model is deliberately changed.
 - `src/main/scala/Cli.scala`: argument parsing and defaults. Accepts a
   `robotstxt.paths.gz` URL directly and resolves a sibling `wat.paths.gz` URL to
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
-  `local-sitemaps`, `filter-sitemaps`, and `download-sitemaps` subcommands.
+  `local-sitemaps`, `filter-sitemaps`, `country-sitemaps`, and
+  `download-sitemaps` subcommands.
   Supports `--max-files N` for WARC-backed robots and sitemaps runs to cap
   manifest archive files before Spark downloads begin. Supports
   `--download-connect-timeout-seconds N` and
   `--download-read-timeout-seconds N` for controlled HTTP downloads.
-  `local-sitemaps`, `filter-sitemaps`, and `download-sitemaps` default to
-  `local[*]` instead of the standalone local cluster.
+  `local-sitemaps`, `filter-sitemaps`, `country-sitemaps`, and
+  `download-sitemaps` default to `local[*]` instead of the standalone local
+  cluster.
 - `src/main/scala/SparkSessionFactory.scala`: configures
   `local-cluster[1,1,200]`, executor memory, Java module options, and the
   driver's active Scala library on executor classpaths.
@@ -99,6 +101,7 @@ sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
+sbt -Dsbt.batch=true "run country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
 sbt -Dsbt.batch=true assembly
 docker build -t cc-robots-download-spark .
 docker run --rm cc-robots-download-spark
@@ -300,8 +303,8 @@ The repository currently supports:
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
 - writing locally extracted sitemap links as per-partition TSV files
-- filtering local sitemap TSV rows to Ukraine, Russia, and UK domains with
-  grouped country and language-region output
+- filtering local sitemap TSV rows by vendored country suffixes with grouped
+  country, language-region, and selected-country output
 - producing a fat JAR with `sbt-assembly`
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals

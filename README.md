@@ -54,8 +54,8 @@ sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/common
 When the output path is omitted, `local-sitemaps` writes to
 `target/commoncrawl-sitemaps`.
 
-To filter local sitemap TSV files down to Ukraine, Russia, and United Kingdom
-domains and write country and language-region groups:
+To filter local sitemap TSV files down to countries in the vendored suffix
+database and write country and language-region groups:
 
 ```bash
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
@@ -63,6 +63,17 @@ sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/fil
 
 When the output path is omitted, `filter-sitemaps` writes to
 `target/filtered-sitemaps`.
+
+To extract sitemap links for one country:
+
+```bash
+sbt -Dsbt.batch=true "run country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
+```
+
+The country can be a country key, country name, or suffix from the vendored
+suffix database, such as `ukraine`, `United Kingdom`, or `.ua`. When the output
+path is omitted, `country-sitemaps ukraine` writes to
+`target/filtered-sitemaps/country/ukraine`.
 
 To download sitemap XML files from a filtered sitemap TSV folder and extract
 page links:
@@ -119,6 +130,12 @@ parsing.
 Prefix arguments with `filter-sitemaps` to read local sitemap TSV files from
 `target/commoncrawl-sitemaps` by default and write filtered output to
 `target/filtered-sitemaps`. This subcommand also defaults to `local[*]`.
+
+Prefix arguments with `country-sitemaps <country>` to read local sitemap
+TSV files from `target/commoncrawl-sitemaps` by default and write only matching
+rows for one country to `target/filtered-sitemaps/country/<country>`. This
+subcommand accepts a country key, country name, or suffix from the vendored
+suffix database and also defaults to `local[*]`.
 
 Prefix arguments with `download-sitemaps` to read local or filtered sitemap TSV
 files from `target/filtered-sitemaps` by default, download each sitemap URL with
@@ -210,10 +227,8 @@ target/filtered-sitemaps/language-region/unknown/part-00000.sitemaps.tsv
 Each filtered row preserves the original four local sitemap fields and appends
 country key, country name, matched suffix, and detected language-region. Country
 matching uses the vendored suffix database in
-`src/main/resources/sitemap-filter/country-suffixes.tsv`: Ukraine `.ua` and
-`.укр`, Russia `.ru` and `.рф`, and United Kingdom `.uk`. The Cyrillic IDN
-suffixes are normalized with punycode equivalents, and `.gb` is intentionally
-not included because it is reserved.
+`src/main/resources/sitemap-filter/country-suffixes.tsv`, generated from IANA
+root-zone metadata. IDN suffixes are normalized with punycode equivalents.
 
 Language-region detection is based only on sitemap URL host and path markers.
 The filter recognizes Ukrainian markers such as `uk`, `uk-ua`, `ua`, and
@@ -340,6 +355,10 @@ language-region group. Country classification uses the robots host field first
 and falls back to the sitemap URL host when the robots host is unknown or not in
 the target suffix set.
 
+`country-sitemaps` uses the same classifier, but restricts matching to one
+selected country and writes downloader-compatible `part-*.sitemaps.tsv` files
+directly under the requested output directory.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
@@ -351,6 +370,7 @@ sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
+sbt -Dsbt.batch=true "run country-sitemaps ukraine target/commoncrawl-sitemaps target/filtered-sitemaps/country/ukraine"
 sbt -Dsbt.batch=true "run download-sitemaps target/filtered-sitemaps/country/anguilla target/downloaded-sitemap-links local[1]"
 sbt -Dsbt.batch=true assembly
 sbt -Dsbt.batch=true scalafmtCheckAll
@@ -403,8 +423,7 @@ docker run --rm cc-robots-download-spark
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
   locally saved robots.txt files and writes extracted sitemap links as TSV rows.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads
-  local sitemap TSV files and writes Ukraine, Russia, and UK grouped sitemap
-  rows.
+  local sitemap TSV files and writes grouped or selected-country sitemap rows.
 - `src/main/scala/SitemapXmlSchema.scala`: sitemap XML schema parser and
   validator for `urlset` and `sitemapindex` documents.
 - `src/main/scala/LocalSitemapDownloadPipeline.scala`: Spark pipeline that

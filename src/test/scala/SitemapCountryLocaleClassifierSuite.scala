@@ -43,6 +43,32 @@ class SitemapCountryLocaleClassifierSuite extends munit.FunSuite {
     assertEquals(classification.map(_.countryKey), Some("ukraine"))
   }
 
+  test("selects country by key, name, or suffix") {
+    assertEquals(
+      SitemapCountryLocaleClassifier.selectCountry("ukraine", suffixes),
+      Some(SelectedCountry("ukraine", "Ukraine"))
+    )
+    assertEquals(
+      SitemapCountryLocaleClassifier.selectCountry("United Kingdom", suffixes),
+      Some(SelectedCountry("united-kingdom", "United Kingdom"))
+    )
+    assertEquals(
+      SitemapCountryLocaleClassifier.selectCountry(".ua", suffixes),
+      Some(SelectedCountry("ukraine", "Ukraine"))
+    )
+  }
+
+  test("keeps only suffixes for selected country") {
+    val selected = SelectedCountry("ukraine", "Ukraine")
+
+    assertEquals(
+      SitemapCountryLocaleClassifier
+        .countrySuffixes(selected, suffixes)
+        .map(_.suffix),
+      Vector(".ua", ".xn--j1amh")
+    )
+  }
+
   test("detects locale markers from path and subdomain tokens") {
     assertLanguage("https://example.ua/uk/sitemap.xml", "uk-UA")
     assertLanguage("https://example.ua/uk-ua/sitemap.xml", "uk-UA")

@@ -41,10 +41,49 @@ final case class ClassifiedLocalSitemapRow(
 
 object LocalSitemapsFilterPipeline {
   def run(spark: SparkSession, config: JobConfig): Unit = {
+    val suffixes = SitemapCountryLocaleClassifier.loadDefaultCountrySuffixes()
+
+    runWithSuffixes(spark, config, suffixes, selectedCountry = None)
+  }
+
+  def runCountry(spark: SparkSession, config: JobConfig): Unit = {
+    val suffixes = SitemapCountryLocaleClassifier.loadDefaultCountrySuffixes()
+    val countryQuery = config.countryFilter.getOrElse {
+      throw IllegalArgumentException(
+        "country-sitemaps requires a country key, country name, or suffix"
+      )
+    }
+    val selectedCountry = SitemapCountryLocaleClassifier
+      .selectCountry(countryQuery, suffixes)
+      .getOrElse {
+        val examples = SitemapCountryLocaleClassifier
+          .supportedCountryKeys(suffixes)
+          .take(12)
+          .mkString(", ")
+        throw IllegalArgumentException(
+          s"Unknown sitemap country '$countryQuery'. Supported country keys include: $examples"
+        )
+      }
+    val selectedSuffixes =
+      SitemapCountryLocaleClassifier.countrySuffixes(selectedCountry, suffixes)
+
+    runWithSuffixes(
+      spark,
+      config,
+      selectedSuffixes,
+      selectedCountry = Some(selectedCountry)
+    )
+  }
+
+  private def runWithSuffixes(
+      spark: SparkSession,
+      config: JobConfig,
+      suffixes: Vector[CountrySuffix],
+      selectedCountry: Option[SelectedCountry]
+  ): Unit = {
     val inputDir = Path.of(config.pathsUrl).toAbsolutePath.normalize()
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
-    val suffixes = SitemapCountryLocaleClassifier.loadDefaultCountrySuffixes()
 
     if (!Files.isDirectory(inputDir)) {
       throw IllegalArgumentException(
@@ -53,7 +92,10 @@ object LocalSitemapsFilterPipeline {
     }
 
     Files.createDirectories(outputDir)
-    deleteFilterOutputFiles(outputDir)
+    selectedCountry match {
+      case Some(_) => deletePartitionOutputFiles(outputDir)
+      case None    => deleteFilterOutputFiles(outputDir)
+    }
 
     val inputFiles = listSitemapFiles(inputDir)
     val partitionCount =
@@ -66,7 +108,8 @@ object LocalSitemapsFilterPipeline {
             partitionId,
             files.toVector,
             outputDirString,
-            suffixes
+            suffixes,
+            selectedCountry
           )
         )
       }
@@ -80,7 +123,14 @@ object LocalSitemapsFilterPipeline {
     println(s"Read ${inputFiles.size} local sitemap TSV files from $inputDir")
     println(s"Read $readRows sitemap rows")
     println(s"Skipped $malformedRows malformed sitemap rows")
-    println(s"Saved $keptRows filtered sitemap rows into $outputDir")
+    selectedCountry match {
+      case Some(country) =>
+        println(
+          s"Saved $keptRows ${country.countryName} sitemap rows into $outputDir"
+        )
+      case None =>
+        println(s"Saved $keptRows filtered sitemap rows into $outputDir")
+    }
 
     if (failures.nonEmpty) {
       failures.foreach { failure =>
@@ -128,11 +178,24 @@ object LocalSitemapsFilterPipeline {
     }
   }
 
+  private def deletePartitionOutputFiles(outputDir: Path): Unit =
+    Using.resource(Files.list(outputDir)) { paths =>
+      paths
+        .iterator()
+        .asScala
+        .filter(Files.isRegularFile(_))
+        .filter(path =>
+          path.getFileName().toString.matches("part-\\d{5}\\.sitemaps\\.tsv")
+        )
+        .foreach(Files.deleteIfExists)
+    }
+
   private def filterPartitionSitemaps(
       partitionId: Int,
       inputFilePaths: Vector[String],
       outputDir: String,
-      suffixes: Vector[CountrySuffix]
+      suffixes: Vector[CountrySuffix],
+      selectedCountry: Option[SelectedCountry]
   ): LocalSitemapFilterResult =
     try {
       val taskPartitionId = Option(TaskContext.get())
@@ -143,7 +206,8 @@ object LocalSitemapsFilterPipeline {
         taskPartitionId,
         inputFilePaths,
         Path.of(outputDir),
-        suffixes
+        suffixes,
+        selectedCountry
       )
     } catch {
       case exception: Exception =>
@@ -160,7 +224,8 @@ object LocalSitemapsFilterPipeline {
       partitionId: Int,
       inputFilePaths: Vector[String],
       outputDir: Path,
-      suffixes: Vector[CountrySuffix]
+      suffixes: Vector[CountrySuffix],
+      selectedCountry: Option[SelectedCountry]
   ): LocalSitemapFilterResult = {
     var readRows = 0
     var malformedRows = 0
@@ -195,6 +260,14 @@ object LocalSitemapsFilterPipeline {
       writer.newLine()
     }
 
+    def writeSelectedCountryRow(row: ClassifiedLocalSitemapRow): Unit = {
+      val outputFile = outputDir.resolve(f"part-$partitionId%05d.sitemaps.tsv")
+      val writer = writerFor(outputFile)
+
+      writer.write(row.fields.map(tsvField).mkString("\t"))
+      writer.newLine()
+    }
+
     try {
       inputFilePaths.foreach { inputFilePath =>
         Using.resource(Files.lines(Path.of(inputFilePath))) { lines =>
@@ -208,16 +281,21 @@ object LocalSitemapsFilterPipeline {
                     val classifiedRow =
                       ClassifiedLocalSitemapRow(row, classification)
 
-                    writeRow(
-                      "country",
-                      classification.countryKey,
-                      classifiedRow
-                    )
-                    writeRow(
-                      "language-region",
-                      classification.languageRegion,
-                      classifiedRow
-                    )
+                    selectedCountry match {
+                      case Some(_) =>
+                        writeSelectedCountryRow(classifiedRow)
+                      case None =>
+                        writeRow(
+                          "country",
+                          classification.countryKey,
+                          classifiedRow
+                        )
+                        writeRow(
+                          "language-region",
+                          classification.languageRegion,
+                          classifiedRow
+                        )
+                    }
                     keptRows += 1
                   }
 
