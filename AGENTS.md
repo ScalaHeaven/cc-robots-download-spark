@@ -91,6 +91,8 @@ just application code.
   files, configures Git, configures Codex Metals MCP, and starts Metals MCP.
 - `.vscode/launch.json`: Metals/Scala debug launch config for `Main`.
 - `.vscode/settings.json`: editor settings, including watcher excludes.
+- `.github/workflows/release-jar.yml`: builds the assembly JAR on pushed tags
+  and uploads it to the tag's GitHub Release assets.
 - `Dockerfile`: production multi-stage build that runs `sbt assembly`, creates
   a minimal `/opt/spark` home, and launches `target/scala-3.8.3/app.jar`.
 - `README.md`: user-facing explanation of the environment and workflows.
@@ -324,6 +326,7 @@ The repository currently supports:
 - downloading sitemap XML from local, filtered, and WARC-backed country sitemap
   TSV rows and writing extracted page URLs
 - producing a fat JAR with `sbt-assembly`
+- publishing the assembly JAR as a GitHub Release asset when a tag is pushed
 - building and running a production Docker image
 - editing and debugging Scala through VS Code Metals
 - navigating into Java standard library sources from Metals

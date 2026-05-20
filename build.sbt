@@ -37,7 +37,8 @@ lazy val root = (project in file("."))
         .exclude("commons-logging", "commons-logging"),
       "org.netpreserve" % "jwarc" % jwarcVersion,
       "com.softwaremill.sttp.client3" %% "httpclient-backend" % sttpVersion,
-      "org.apache.kafka" % "kafka-clients" % kafkaClientsVersion,
+      ("org.apache.kafka" % "kafka-clients" % kafkaClientsVersion)
+        .exclude("at.yawk.lz4", "lz4-java"),
       "org.scalameta" %% "munit" % munitVersion % Test
     ),
     Compile / run / fork := true,

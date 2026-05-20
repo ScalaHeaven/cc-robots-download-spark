@@ -433,6 +433,11 @@ docker build -t cc-robots-download-spark .
 docker run --rm cc-robots-download-spark
 ```
 
+GitHub Actions builds the assembly JAR when a tag is pushed. The
+`Release JAR` workflow runs `sbt -Dsbt.batch=true assembly`, creates a GitHub
+Release for the tag when needed, and uploads
+`cc-robots-download-spark-<tag>.jar` as a release asset.
+
 ## Project Layout
 
 - `build.sbt`: pins Scala, Spark SQL, sttp, and jwarc; enables SemanticDB;
