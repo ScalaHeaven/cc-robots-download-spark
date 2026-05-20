@@ -390,6 +390,49 @@ links matching the selected country, and writes downloader-compatible
 skips the intermediate robots.txt output directory and the all-sitemaps TSV
 directory.
 
+## JAR Usage
+
+Build the runnable assembly JAR with:
+
+```bash
+sbt -Dsbt.batch=true assembly
+```
+
+The local build writes `target/scala-3.8.3/app.jar`. Tagged GitHub releases
+also include the same assembly as a release asset named
+`cc-robots-download-spark-<tag>.jar`.
+
+Run the JAR with JDK 21. Spark on Java 21 needs the same module opens used by
+`sbt run`, VS Code debugging, and the production Docker image:
+
+```bash
+SPARK_JAVA_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+```
+
+For local single-JVM runs, pass a `local[...]` Spark master and run the assembly
+directly:
+
+```bash
+java -Xmx4g $SPARK_JAVA_OPTS -jar target/scala-3.8.3/app.jar --help
+java -Xmx4g $SPARK_JAVA_OPTS -jar target/scala-3.8.3/app.jar download-sitemaps target/filtered-sitemaps/country/ukraine target/downloaded-sitemap-links local[1]
+```
+
+For the default `local-cluster[1,1,200]` mode or another standalone Spark
+master, provide a Spark home with Spark `3.5.1` jars for executor JVMs and put
+those jars on the application classpath:
+
+```bash
+export SPARK_HOME=/opt/spark
+export SPARK_SCALA_VERSION=2.13
+
+java -Xmx4g $SPARK_JAVA_OPTS -cp "$SPARK_HOME/jars/*:target/scala-3.8.3/app.jar" Main \
+  robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000
+```
+
+The production Docker image packages the assembly JAR, `/opt/spark` jars, and
+the Java module options, so `docker run --rm cc-robots-download-spark` is the
+simplest way to run the assembled application in a clean container.
+
 ## Build And Validation
 
 Run sbt commands serially. Starting multiple sbt processes at the same time can
@@ -432,11 +475,6 @@ Build and run the production image:
 docker build -t cc-robots-download-spark .
 docker run --rm cc-robots-download-spark
 ```
-
-GitHub Actions builds the assembly JAR when a tag is pushed. The
-`Release JAR` workflow runs `sbt -Dsbt.batch=true assembly`, creates a GitHub
-Release for the tag when needed, and uploads
-`cc-robots-download-spark-<tag>.jar` as a release asset.
 
 ## Project Layout
 
