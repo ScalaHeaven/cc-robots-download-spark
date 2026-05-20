@@ -1,11 +1,13 @@
 import java.io.BufferedWriter
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path}
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.{FileVisitResult, Files, Path, SimpleFileVisitor}
 import java.util.Locale
 
 import org.apache.spark.TaskContext
 import org.apache.spark.sql.SparkSession
 
+import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scala.util.Using
@@ -19,10 +21,13 @@ final case class LocalSitemapPartitionResult(
 )
 
 object LocalRobotsSitemapsPipeline {
+  private val DefaultFileBatchSize = 10000
+
   def run(spark: SparkSession, config: JobConfig): Unit = {
     val robotsDir = Path.of(config.pathsUrl).toAbsolutePath.normalize()
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
+    val fileBatchSize = configuredFileBatchSize()
 
     if (!Files.isDirectory(robotsDir)) {
       throw IllegalArgumentException(
@@ -33,28 +38,72 @@ object LocalRobotsSitemapsPipeline {
     Files.createDirectories(outputDir)
     deletePartitionOutputFiles(outputDir)
 
-    val robotsFiles = listRobotsFiles(robotsDir)
-    val partitionCount =
-      robotsFiles.size.min(spark.sparkContext.defaultParallelism * 4).max(1)
-    val results = spark.sparkContext
-      .parallelize(robotsFiles.map(_.toString), partitionCount)
-      .mapPartitionsWithIndex { case (partitionId, files) =>
-        Iterator(
-          extractPartitionSitemaps(
-            partitionId,
-            files.toVector,
-            outputDirString
-          )
+    var batchId = 0
+    var totalFiles = 0L
+    var parsedFiles = 0L
+    var rejectedFiles = 0L
+    var savedSitemapLinks = 0L
+    var failures = Vector.empty[LocalSitemapPartitionResult]
+    val currentBatch = mutable.ArrayBuffer.empty[String]
+
+    def processCurrentBatch(): Unit =
+      if (currentBatch.nonEmpty) {
+        val batchFiles = currentBatch.toVector
+        currentBatch.clear()
+        totalFiles += batchFiles.size
+
+        val partitionCount =
+          batchFiles.size.min(spark.sparkContext.defaultParallelism * 4).max(1)
+
+        println(
+          s"Processing local robots.txt batch $batchId with ${batchFiles.size} files"
         )
+
+        val results = spark.sparkContext
+          .parallelize(batchFiles, partitionCount)
+          .mapPartitionsWithIndex { case (partitionId, files) =>
+            Iterator(
+              extractPartitionSitemaps(
+                batchId,
+                partitionId,
+                files.toVector,
+                outputDirString
+              )
+            )
+          }
+          .collect()
+
+        parsedFiles += results.map(_.parsedFiles.toLong).sum
+        rejectedFiles += results.map(_.rejectedFiles.toLong).sum
+        savedSitemapLinks += results.map(_.savedSitemapLinks.toLong).sum
+        failures ++= results.filter(_.failure != null)
+        batchId += 1
       }
-      .collect()
 
-    val parsedFiles = results.map(_.parsedFiles).sum
-    val rejectedFiles = results.map(_.rejectedFiles).sum
-    val savedSitemapLinks = results.map(_.savedSitemapLinks).sum
-    val failures = results.filter(_.failure != null)
+    Files.walkFileTree(
+      robotsDir,
+      new SimpleFileVisitor[Path] {
+        override def visitFile(
+            file: Path,
+            attrs: BasicFileAttributes
+        ): FileVisitResult = {
+          if (attrs.isRegularFile && file.getFileName().toString.endsWith(
+              ".txt"
+            )) {
+            currentBatch += file.toString
 
-    println(s"Read ${robotsFiles.size} local robots.txt files from $robotsDir")
+            if (currentBatch.size >= fileBatchSize) {
+              processCurrentBatch()
+            }
+          }
+
+          FileVisitResult.CONTINUE
+        }
+      }
+    )
+    processCurrentBatch()
+
+    println(s"Read $totalFiles local robots.txt files from $robotsDir")
     println(s"Parsed $parsedFiles usable robots.txt files")
     println(
       s"Rejected $rejectedFiles robots.txt files without usable robots directives"
@@ -73,16 +122,12 @@ object LocalRobotsSitemapsPipeline {
     }
   }
 
-  private def listRobotsFiles(robotsDir: Path): Vector[Path] =
-    Using.resource(Files.walk(robotsDir)) { paths =>
-      paths
-        .iterator()
-        .asScala
-        .filter(Files.isRegularFile(_))
-        .filter(path => path.getFileName().toString.endsWith(".txt"))
-        .toVector
-        .sortBy(_.toString)
-    }
+  private def configuredFileBatchSize(): Int =
+    sys.props
+      .get("localSitemaps.batchSize")
+      .flatMap(value => Try(value.toInt).toOption)
+      .filter(_ > 0)
+      .getOrElse(DefaultFileBatchSize)
 
   private def deletePartitionOutputFiles(outputDir: Path): Unit =
     Using.resource(Files.list(outputDir)) { paths =>
@@ -91,12 +136,15 @@ object LocalRobotsSitemapsPipeline {
         .asScala
         .filter(Files.isRegularFile(_))
         .filter(path =>
-          path.getFileName().toString.matches("part-\\d{5}\\.sitemaps\\.tsv")
+          path.getFileName().toString.matches(
+            "part-\\d{5}(?:-\\d{5})?\\.sitemaps\\.tsv"
+          )
         )
         .foreach(Files.deleteIfExists)
     }
 
   private def extractPartitionSitemaps(
+      batchId: Int,
       partitionId: Int,
       robotFilePaths: Vector[String],
       outputDir: String
@@ -107,7 +155,7 @@ object LocalRobotsSitemapsPipeline {
         .getOrElse(partitionId)
       val outputFile = Path
         .of(outputDir)
-        .resolve(f"part-$taskPartitionId%05d.sitemaps.tsv")
+        .resolve(f"part-$batchId%05d-$taskPartitionId%05d.sitemaps.tsv")
 
       extractSitemapsFromFiles(taskPartitionId, robotFilePaths, outputFile)
     } catch {

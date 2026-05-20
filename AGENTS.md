@@ -47,9 +47,11 @@ just application code.
   `robotstxt/*.warc.gz` archive streaming downloads with Spark, parses valid
   robots.txt payloads, filters extracted `Sitemap:` links to one selected
   country, and writes only matching links to per-archive TSV files.
-- `src/main/scala/LocalRobotsSitemapsPipeline.scala`: recursively reads locally
-  saved robots.txt files, parses valid payloads with Spark, and writes extracted
-  `Sitemap:` links to per-partition TSV files.
+- `src/main/scala/LocalRobotsSitemapsPipeline.scala`: recursively streams
+  locally saved robots.txt files in bounded batches, parses valid payloads with
+  Spark, and writes extracted `Sitemap:` links to per-batch partition TSV files.
+  The `localSitemaps.batchSize` JVM property controls the default 10,000-file
+  batch size.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: recursively reads local
   sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows by
   the vendored country suffix database, and writes grouped country,
@@ -314,7 +316,8 @@ The repository currently supports:
 - applying a default one-second HTTP request delay across download commands
 - extracting robots.txt response payloads with jwarc
 - extracting `Sitemap:` links from valid parsed robots.txt payloads
-- extracting `Sitemap:` links from locally saved robots.txt payload files
+- extracting `Sitemap:` links from locally saved robots.txt payload files with
+  bounded driver memory
 - starting one local Spark master and 1 local Spark workers by default
 - writing extracted robots.txt files grouped by target host
 - writing extracted sitemap links as per-archive TSV files
