@@ -22,12 +22,14 @@ final case class LocalSitemapPartitionResult(
 
 object LocalRobotsSitemapsPipeline {
   private val DefaultFileBatchSize = 10000
+  private val DefaultProgressInterval = 100000
 
   def run(spark: SparkSession, config: JobConfig): Unit = {
     val robotsDir = Path.of(config.pathsUrl).toAbsolutePath.normalize()
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
     val fileBatchSize = configuredFileBatchSize()
+    val progressInterval = configuredProgressInterval()
 
     if (!Files.isDirectory(robotsDir)) {
       throw IllegalArgumentException(
@@ -45,6 +47,10 @@ object LocalRobotsSitemapsPipeline {
     var savedSitemapLinks = 0L
     var failures = Vector.empty[LocalSitemapPartitionResult]
     val currentBatch = mutable.ArrayBuffer.empty[String]
+
+    println(
+      s"Walking local robots.txt tree $robotsDir in batches of $fileBatchSize files"
+    )
 
     def processCurrentBatch(): Unit =
       if (currentBatch.nonEmpty) {
@@ -80,21 +86,48 @@ object LocalRobotsSitemapsPipeline {
         batchId += 1
       }
 
+    var visitedDirectories = 0L
+    var visitedFiles = 0L
+    var matchedRobotsFiles = 0L
+
+    def printWalkProgress(): Unit =
+      println(
+        s"Walked $visitedDirectories directories and $visitedFiles files; found $matchedRobotsFiles robots.txt files"
+      )
+
     Files.walkFileTree(
       robotsDir,
       new SimpleFileVisitor[Path] {
+        override def preVisitDirectory(
+            dir: Path,
+            attrs: BasicFileAttributes
+        ): FileVisitResult = {
+          visitedDirectories += 1
+
+          if (visitedDirectories % progressInterval == 0) {
+            printWalkProgress()
+          }
+
+          FileVisitResult.CONTINUE
+        }
+
         override def visitFile(
             file: Path,
             attrs: BasicFileAttributes
         ): FileVisitResult = {
+          visitedFiles += 1
+
           if (attrs.isRegularFile && file.getFileName().toString.endsWith(
               ".txt"
             )) {
+            matchedRobotsFiles += 1
             currentBatch += file.toString
 
             if (currentBatch.size >= fileBatchSize) {
               processCurrentBatch()
             }
+          } else if (visitedFiles % progressInterval == 0) {
+            printWalkProgress()
           }
 
           FileVisitResult.CONTINUE
@@ -128,6 +161,13 @@ object LocalRobotsSitemapsPipeline {
       .flatMap(value => Try(value.toInt).toOption)
       .filter(_ > 0)
       .getOrElse(DefaultFileBatchSize)
+
+  private def configuredProgressInterval(): Int =
+    sys.props
+      .get("localSitemaps.progressInterval")
+      .flatMap(value => Try(value.toInt).toOption)
+      .filter(_ > 0)
+      .getOrElse(DefaultProgressInterval)
 
   private def deletePartitionOutputFiles(outputDir: Path): Unit =
     Using.resource(Files.list(outputDir)) { paths =>
