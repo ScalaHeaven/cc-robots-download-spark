@@ -124,8 +124,10 @@ object RobotsTxtParser {
         }
 
       case "sitemap" =>
-        if (value.nonEmpty) {
+        if (isUsableSitemapValue(value)) {
           builder.addSitemap(value)
+        } else if (value.nonEmpty) {
+          builder.warn(lineNumber, s"Ignored invalid sitemap value '$value'")
         } else {
           builder.warn(lineNumber, "Missing sitemap value")
         }
@@ -154,6 +156,17 @@ object RobotsTxtParser {
       case _ =>
         None
     }
+
+  private def isUsableSitemapValue(value: String): Boolean = {
+    val normalized = value.toLowerCase(Locale.ROOT)
+
+    value.nonEmpty &&
+    !value.exists(_.isWhitespace) &&
+    (normalized.startsWith("http://") ||
+      normalized.startsWith("https://") ||
+      value.startsWith("//") ||
+      value.startsWith("/"))
+  }
 
   private final class ParserBuilder {
     private var completedGroups = Vector.empty[RobotsGroup]

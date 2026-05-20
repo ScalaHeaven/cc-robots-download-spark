@@ -24,6 +24,28 @@ class RobotsTxtParserSuite extends munit.FunSuite {
     )
   }
 
+  test("accepts root-relative sitemap values") {
+    val robotsTxt = RobotsTxtParser.parse("Sitemap: /sitemap.xml\n")
+
+    assert(robotsTxt.isValid)
+    assertEquals(robotsTxt.sitemaps, Vector("/sitemap.xml"))
+  }
+
+  test("rejects directive-looking sitemap values") {
+    val robotsTxt = RobotsTxtParser.parse(
+      """Sitemap: User-agent: *
+        |Sitemap: https://example.com/sitemap.xml
+        |""".stripMargin
+    )
+
+    assert(robotsTxt.isValid)
+    assertEquals(
+      robotsTxt.sitemaps,
+      Vector("https://example.com/sitemap.xml")
+    )
+    assertEquals(robotsTxt.warnings.map(_.lineNumber), Vector(1))
+  }
+
   test("parses user-agent fields with UTF-8 byte order mark") {
     val robotsTxt = RobotsTxtParser.parse(
       "\uFEFFUser-agent: *\nDisallow: /tmp\n"
