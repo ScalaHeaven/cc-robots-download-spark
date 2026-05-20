@@ -28,6 +28,18 @@ lazy val sparkJavaOptions = Seq(
   "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED"
 )
 
+lazy val forwardedRunPropertyNames = Seq(
+  "localSitemaps.batchSize",
+  "localSitemaps.queueSize",
+  "localSitemaps.progressInterval",
+  "localSitemaps.workers"
+)
+
+lazy val forwardedRunJavaOptions =
+  forwardedRunPropertyNames.flatMap { name =>
+    sys.props.get(name).map(value => s"-D$name=$value")
+  }
+
 lazy val root = (project in file("."))
   .settings(
     name := "cc-robots-download-spark",
@@ -44,6 +56,7 @@ lazy val root = (project in file("."))
     Compile / run / fork := true,
     Compile / run / javaOptions += "-Xmx4g",
     Compile / run / javaOptions ++= sparkJavaOptions,
+    Compile / run / javaOptions ++= forwardedRunJavaOptions,
     assembly / mainClass := Some("Main"),
     assembly / assemblyJarName := "app.jar",
     assembly / assemblyMergeStrategy := {

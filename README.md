@@ -55,12 +55,14 @@ When the output path is omitted, `local-sitemaps` writes to
 `target/commoncrawl-sitemaps`.
 
 For very large robots outputs with millions of host folders, `local-sitemaps`
-walks the input tree in bounded batches instead of materializing every file path
-on the driver. Override the default 10,000-file batch size with
-`-DlocalSitemaps.batchSize=N` if you need to tune Spark job size:
+streams the input tree through a bounded local worker queue instead of
+materializing every file path on the driver, starting Spark, or submitting many
+tiny Spark jobs. Set the local worker count with the master-style argument, such
+as `local[8]`, and override the default 50,000-file queue with
+`-J-DlocalSitemaps.queueSize=N` if you need more buffering:
 
 ```bash
-sbt -Dsbt.batch=true -DlocalSitemaps.batchSize=50000 "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
+sbt -J-DlocalSitemaps.queueSize=100000 "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps local[8]"
 ```
 
 To filter local sitemap TSV files down to countries in the vendored suffix
@@ -140,8 +142,8 @@ directory. The default local robots input directory is
 `target/commoncrawl-robots`, and the default sitemap output directory is
 `target/commoncrawl-sitemaps`. Unlike the WARC-backed pipelines,
 `local-sitemaps` defaults to `local[*]` instead of `local-cluster[1,1,200]`
-to avoid starting standalone Spark master and worker JVMs for local file
-parsing.
+and uses that local master-style value as its worker count without starting a
+Spark session.
 
 Prefix arguments with `filter-sitemaps` to read local sitemap TSV files from
 `target/commoncrawl-sitemaps` by default and write filtered output to
@@ -232,16 +234,15 @@ date, robots.txt URL, and sitemap URL. Archive-level files avoid concurrent
 Spark workers writing to the same output file. Per-archive sitemap files are
 replaced on rerun and removed when an archive produces no sitemap links.
 
-The local sitemap-link pipeline writes one TSV file per Spark partition in each
-bounded input batch:
+The local sitemap-link pipeline writes one TSV file per local worker:
 
 ```text
-target/commoncrawl-sitemaps/part-00000-00000.sitemaps.tsv
+target/commoncrawl-sitemaps/part-00000.sitemaps.tsv
 ```
 
 Each local row contains four tab-separated fields: robots.txt file path,
 robots.txt host directory, URI scheme inferred from the file name, and sitemap
-URL. Local batch partition files are replaced on rerun.
+URL. Local worker output files are replaced on rerun.
 
 The local sitemap filter reads `*.sitemaps.tsv` files produced by
 `local-sitemaps` and writes grouped TSV files beneath the requested output
@@ -379,10 +380,10 @@ parsed, rejected, and saved-link counts after Spark collects the task results.
 
 `LocalRobotsSitemapsPipeline` accepts a directory that contains already saved
 robots.txt files, such as `target/commoncrawl-robots`. The driver recursively
-walks `.txt` files in bounded batches, Spark parses each batch in bounded
-partitions, and valid robots.txt files contribute their distinct `Sitemap:`
-links to per-batch partition TSV files. Local files with no usable robots
-directives are counted as rejected and do not produce output rows.
+walks `.txt` files into a bounded queue, local workers parse files concurrently,
+and valid robots.txt files contribute their distinct `Sitemap:` links to worker
+TSV files. Local files with no usable robots directives are counted as rejected
+and do not produce output rows.
 
 `LocalSitemapsFilterPipeline` accepts a directory of local sitemap TSV files,
 such as `target/commoncrawl-sitemaps`. The driver recursively lists
@@ -509,8 +510,8 @@ docker run --rm cc-robots-download-spark
   downloads robots WARC archives and writes selected-country sitemap links as
   TSV rows without writing intermediate robots.txt files.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: Spark pipeline that parses
-  locally saved robots.txt files in bounded batches and writes extracted sitemap
-  links as TSV rows.
+  locally saved robots.txt files through a bounded local worker queue and writes
+  extracted sitemap links as TSV rows.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: Spark pipeline that reads
   local sitemap TSV files and writes grouped or selected-country sitemap rows.
 - `src/main/scala/SitemapXmlSchema.scala`: sitemap XML schema parser and

@@ -48,10 +48,11 @@ just application code.
   robots.txt payloads, filters extracted `Sitemap:` links to one selected
   country, and writes only matching links to per-archive TSV files.
 - `src/main/scala/LocalRobotsSitemapsPipeline.scala`: recursively streams
-  locally saved robots.txt files in bounded batches, parses valid payloads with
-  Spark, and writes extracted `Sitemap:` links to per-batch partition TSV files.
-  The `localSitemaps.batchSize` JVM property controls the default 10,000-file
-  batch size.
+  locally saved robots.txt files through a bounded local worker queue, parses
+  valid payloads concurrently, and writes extracted `Sitemap:` links to worker
+  TSV files without starting Spark. The master-style local argument controls
+  worker count for local runs, and the `localSitemaps.queueSize` JVM property
+  controls the default 50,000-file queue size.
 - `src/main/scala/LocalSitemapsFilterPipeline.scala`: recursively reads local
   sitemap TSV files produced by `LocalRobotsSitemapsPipeline`, filters rows by
   the vendored country suffix database, and writes grouped country,
