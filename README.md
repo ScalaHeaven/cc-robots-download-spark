@@ -32,10 +32,11 @@ sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
 ```
 
-To process only the first 5,000 robotstxt archive files from the manifest:
+To skip the first 10,000 robotstxt archive files and then process the next
+5,000 from the manifest:
 
 ```bash
-sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000"
+sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --skip-files 10000 --max-files 5000"
 ```
 
 To extract sitemap links from parsed robots.txt files instead:
@@ -154,7 +155,8 @@ sitemap-link pipeline, keep only matching rows for one country, and write them
 to `target/filtered-sitemaps/country/<country>` by default. This subcommand
 accepts a country key, country name, or suffix from the vendored suffix database,
 uses the default `robotstxt.paths.gz` manifest when the URL is omitted, supports
-`--max-files N`, and defaults to `local-cluster[1,1,200]`.
+`--skip-files N` and `--max-files N`, and defaults to
+`local-cluster[1,1,200]`.
 
 Prefix arguments with `local-country-sitemaps <country>` to read local sitemap
 TSV files from `target/commoncrawl-sitemaps` by default and write only matching
@@ -194,13 +196,15 @@ To target another Spark master, pass it as the third argument:
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz /data/commoncrawl-robots spark://spark-master:7077"
 ```
 
-To cap a WARC-backed run before Spark starts downloading archives, pass
-`--max-files N`. The option applies to the default robots command and the
-`sitemaps` command, and limits the number of `robotstxt/*.warc.gz` archive
-files read from the manifest:
+To skip or cap a WARC-backed run before Spark starts downloading archives, pass
+`--skip-files N` or `--max-files N`. The options apply to the default robots
+command, the `robots` command, the `sitemaps` command, and
+`country-sitemaps`. `--skip-files` drops matching manifest entries first, and
+`--max-files` then limits how many remaining `robotstxt/*.warc.gz` archive files
+are handed to Spark:
 
 ```bash
-sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz /data/commoncrawl-robots spark://spark-master:7077 --max-files 5000"
+sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz /data/commoncrawl-robots spark://spark-master:7077 --skip-files 10000 --max-files 5000"
 ```
 
 For external clusters, make sure the output path is reachable and writable from
@@ -325,8 +329,9 @@ The manifest is streamed to a temporary `.gz` file with sttp, then read through
 `GZIPInputStream`. Empty lines and comments are ignored, and only archive paths
 that contain `/robotstxt/` and end in `.warc.gz` are kept. Relative archive
 paths are resolved against `https://data.commoncrawl.org/`; absolute paths are
-used directly. When `--max-files N` is set, only the first `N` matching archive
-paths are handed to Spark.
+used directly. When `--skip-files N` is set, the first `N` matching archive
+paths are skipped. When `--max-files N` is also set, only the first `N`
+remaining archive paths are handed to Spark.
 
 Spark receives the filtered archive path list with one partition per archive
 path. Each worker downloads its assigned archive to a temporary `.warc.gz` file.
@@ -437,7 +442,7 @@ export SPARK_HOME=/opt/spark
 export SPARK_SCALA_VERSION=2.13
 
 java -Xmx4g $SPARK_JAVA_OPTS -cp "$SPARK_HOME/jars/*:target/scala-3.8.3/app.jar" Main \
-  robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000
+  robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --skip-files 10000 --max-files 5000
 ```
 
 The production Docker image packages the assembly JAR, `/opt/spark` jars, and
@@ -493,8 +498,8 @@ docker run --rm cc-robots-download-spark
   adds munit for tests; configures Spark Java module options; sets the
   `sbt run` heap; and builds `app.jar` with `sbt-assembly`.
 - `src/main/scala/Main.scala`: application entry point.
-- `src/main/scala/Cli.scala`: argument parsing, runtime defaults, and download
-  policy options.
+- `src/main/scala/Cli.scala`: argument parsing, runtime defaults, WARC manifest
+  skip/limit options, and download policy options.
 - `src/main/scala/SparkSessionFactory.scala`: Spark session construction,
   local-cluster driver binding, executor memory, Java module options, and
   Scala library classpath handling for executor RPC serialization.

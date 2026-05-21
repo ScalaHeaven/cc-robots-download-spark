@@ -15,7 +15,8 @@ final case class JobConfig(
     pipeline: PipelineMode,
     maxFiles: Option[Int] = None,
     downloadPolicy: DownloadPolicyConfig = Cli.DefaultDownloadPolicy,
-    countryFilter: Option[String] = None
+    countryFilter: Option[String] = None,
+    skipFiles: Int = 0
 )
 
 enum PipelineMode:
@@ -49,7 +50,7 @@ object Cli {
 
   def parseArgs(args: Array[String]): Either[String, CliCommand] =
     splitOptions(args.toList).flatMap {
-      case (positionArgs, maxFiles, downloadPolicy) =>
+      case (positionArgs, maxFiles, skipFiles, downloadPolicy) =>
         positionArgs match {
           case Nil =>
             Right(
@@ -60,12 +61,13 @@ object Cli {
                   DefaultMaster,
                   PipelineMode.Robots,
                   maxFiles,
-                  downloadPolicy
+                  downloadPolicy,
+                  skipFiles = skipFiles
                 )
               )
             )
           case "--help" :: Nil =>
-            if (maxFiles.isEmpty) {
+            if (maxFiles.isEmpty && skipFiles == 0) {
               Right(CliCommand.ShowUsage)
             } else {
               Left(usage)
@@ -76,6 +78,7 @@ object Cli {
               DefaultOutputPath,
               PipelineMode.Robots,
               maxFiles = maxFiles,
+              skipFiles = skipFiles,
               downloadPolicy = downloadPolicy
             )
           case "sitemaps" :: remaining =>
@@ -84,12 +87,14 @@ object Cli {
               DefaultSitemapsOutputPath,
               PipelineMode.Sitemaps,
               maxFiles = maxFiles,
+              skipFiles = skipFiles,
               downloadPolicy = downloadPolicy
             )
           case "local-sitemaps" :: remaining =>
             parseLocalRunConfig(
               remaining,
               maxFiles,
+              skipFiles,
               DefaultSitemapsOutputPath,
               PipelineMode.LocalSitemaps,
               defaultInputPath = DefaultOutputPath,
@@ -100,6 +105,7 @@ object Cli {
             parseLocalRunConfig(
               remaining,
               maxFiles,
+              skipFiles,
               DefaultFilteredSitemapsOutputPath,
               PipelineMode.FilterSitemaps,
               defaultInputPath = DefaultSitemapsOutputPath,
@@ -110,6 +116,7 @@ object Cli {
             parseCountrySitemapsConfig(
               remaining,
               maxFiles,
+              skipFiles,
               downloadPolicy,
               pipeline = PipelineMode.LocalCountrySitemaps,
               defaultInputPath = DefaultSitemapsOutputPath,
@@ -121,6 +128,7 @@ object Cli {
             parseCountrySitemapsConfig(
               remaining,
               maxFiles,
+              skipFiles,
               downloadPolicy,
               pipeline = PipelineMode.CountrySitemaps,
               defaultInputPath = DefaultPathsUrl,
@@ -132,6 +140,7 @@ object Cli {
             parseLocalRunConfig(
               remaining,
               maxFiles,
+              skipFiles,
               DefaultDownloadedSitemapLinksOutputPath,
               PipelineMode.DownloadSitemaps,
               defaultInputPath = DefaultFilteredSitemapsOutputPath,
@@ -147,7 +156,8 @@ object Cli {
                   DefaultMaster,
                   PipelineMode.Robots,
                   maxFiles,
-                  downloadPolicy
+                  downloadPolicy,
+                  skipFiles = skipFiles
                 )
               )
             )
@@ -160,7 +170,8 @@ object Cli {
                   master,
                   PipelineMode.Robots,
                   maxFiles,
-                  downloadPolicy
+                  downloadPolicy,
+                  skipFiles = skipFiles
                 )
               )
             )
@@ -176,6 +187,7 @@ object Cli {
       defaultInputPath: String = DefaultPathsUrl,
       defaultMaster: String = DefaultMaster,
       maxFiles: Option[Int] = None,
+      skipFiles: Int = 0,
       downloadPolicy: DownloadPolicyConfig = DefaultDownloadPolicy,
       countryFilter: Option[String] = None
   ): Either[String, CliCommand] =
@@ -190,7 +202,8 @@ object Cli {
               pipeline,
               maxFiles,
               downloadPolicy,
-              countryFilter
+              countryFilter,
+              skipFiles
             )
           )
         )
@@ -204,7 +217,8 @@ object Cli {
               pipeline,
               maxFiles,
               downloadPolicy,
-              countryFilter
+              countryFilter,
+              skipFiles
             )
           )
         )
@@ -218,7 +232,8 @@ object Cli {
               pipeline,
               maxFiles,
               downloadPolicy,
-              countryFilter
+              countryFilter,
+              skipFiles
             )
           )
         )
@@ -232,7 +247,8 @@ object Cli {
               pipeline,
               maxFiles,
               downloadPolicy,
-              countryFilter
+              countryFilter,
+              skipFiles
             )
           )
         )
@@ -243,6 +259,7 @@ object Cli {
   private def parseLocalRunConfig(
       args: List[String],
       maxFiles: Option[Int],
+      skipFiles: Int,
       defaultOutputPath: String,
       pipeline: PipelineMode,
       defaultInputPath: String,
@@ -250,18 +267,23 @@ object Cli {
       downloadPolicy: DownloadPolicyConfig,
       countryFilter: Option[String] = None
   ): Either[String, CliCommand] =
-    maxFiles match {
-      case Some(_) =>
+    (maxFiles, skipFiles) match {
+      case (Some(_), _) =>
         Left(
           s"--max-files is only supported for robots, sitemaps, and country-sitemaps runs.\n\n$usage"
         )
-      case None =>
+      case (None, skipped) if skipped > 0 =>
+        Left(
+          s"--skip-files is only supported for robots, sitemaps, and country-sitemaps runs.\n\n$usage"
+        )
+      case (None, _) =>
         parseRunConfig(
           args,
           defaultOutputPath,
           pipeline,
           defaultInputPath,
           defaultMaster,
+          skipFiles = skipFiles,
           downloadPolicy = downloadPolicy,
           countryFilter = countryFilter
         )
@@ -270,6 +292,7 @@ object Cli {
   private def parseCountrySitemapsConfig(
       args: List[String],
       maxFiles: Option[Int],
+      skipFiles: Int,
       downloadPolicy: DownloadPolicyConfig,
       pipeline: PipelineMode,
       defaultInputPath: String,
@@ -290,6 +313,7 @@ object Cli {
             defaultInputPath = defaultInputPath,
             defaultMaster = defaultMaster,
             maxFiles = maxFiles,
+            skipFiles = skipFiles,
             downloadPolicy = downloadPolicy,
             countryFilter = Some(country)
           )
@@ -297,6 +321,7 @@ object Cli {
           parseLocalRunConfig(
             remaining,
             maxFiles,
+            skipFiles,
             defaultOutputPath,
             pipeline,
             defaultInputPath = defaultInputPath,
@@ -311,12 +336,19 @@ object Cli {
 
   private def splitOptions(
       args: List[String]
-  ): Either[String, (List[String], Option[Int], DownloadPolicyConfig)] = {
+  ): Either[String, (List[String], Option[Int], Int, DownloadPolicyConfig)] = {
     def parseLimit(value: String): Either[String, Int] =
       Try(value.toInt).toOption.filter(_ > 0) match {
         case Some(maxFiles) => Right(maxFiles)
         case None           =>
           Left(s"--max-files must be a positive integer.\n\n$usage")
+      }
+
+    def parseSkip(value: String): Either[String, Int] =
+      Try(value.toInt).toOption.filter(_ >= 0) match {
+        case Some(skipFiles) => Right(skipFiles)
+        case None            =>
+          Left(s"--skip-files must be a non-negative integer.\n\n$usage")
       }
 
     def parseTimeout(optionName: String, value: String): Either[String, Int] =
@@ -339,20 +371,31 @@ object Cli {
         remaining: List[String],
         positionArgs: Vector[String],
         maxFiles: Option[Int],
+        skipFiles: Int,
         downloadPolicy: DownloadPolicyConfig
-    ): Either[String, (List[String], Option[Int], DownloadPolicyConfig)] =
+    ): Either[String, (List[String], Option[Int], Int, DownloadPolicyConfig)] =
       remaining match {
         case Nil =>
-          Right((positionArgs.toList, maxFiles, downloadPolicy))
+          Right((positionArgs.toList, maxFiles, skipFiles, downloadPolicy))
         case "--max-files" :: value :: tail =>
           parseLimit(value).flatMap(parsed =>
-            loop(tail, positionArgs, Some(parsed), downloadPolicy)
+            loop(tail, positionArgs, Some(parsed), skipFiles, downloadPolicy)
           )
         case "--max-files" :: Nil =>
           Left(s"--max-files requires a positive integer value.\n\n$usage")
         case option :: tail if option.startsWith("--max-files=") =>
           parseLimit(option.stripPrefix("--max-files=")).flatMap(parsed =>
-            loop(tail, positionArgs, Some(parsed), downloadPolicy)
+            loop(tail, positionArgs, Some(parsed), skipFiles, downloadPolicy)
+          )
+        case "--skip-files" :: value :: tail =>
+          parseSkip(value).flatMap(parsed =>
+            loop(tail, positionArgs, maxFiles, parsed, downloadPolicy)
+          )
+        case "--skip-files" :: Nil =>
+          Left(s"--skip-files requires a non-negative integer value.\n\n$usage")
+        case option :: tail if option.startsWith("--skip-files=") =>
+          parseSkip(option.stripPrefix("--skip-files=")).flatMap(parsed =>
+            loop(tail, positionArgs, maxFiles, parsed, downloadPolicy)
           )
         case "--download-connect-timeout-seconds" :: value :: tail =>
           parseTimeout("--download-connect-timeout-seconds", value).flatMap {
@@ -361,6 +404,7 @@ object Cli {
                 tail,
                 positionArgs,
                 maxFiles,
+                skipFiles,
                 downloadPolicy.copy(connectTimeoutSeconds = parsed)
               )
           }
@@ -379,6 +423,7 @@ object Cli {
               tail,
               positionArgs,
               maxFiles,
+              skipFiles,
               downloadPolicy.copy(connectTimeoutSeconds = parsed)
             )
           )
@@ -389,6 +434,7 @@ object Cli {
                 tail,
                 positionArgs,
                 maxFiles,
+                skipFiles,
                 downloadPolicy.copy(readTimeoutSeconds = parsed)
               )
           }
@@ -407,6 +453,7 @@ object Cli {
               tail,
               positionArgs,
               maxFiles,
+              skipFiles,
               downloadPolicy.copy(readTimeoutSeconds = parsed)
             )
           )
@@ -416,6 +463,7 @@ object Cli {
               tail,
               positionArgs,
               maxFiles,
+              skipFiles,
               downloadPolicy.copy(delaySeconds = parsed)
             )
           )
@@ -431,14 +479,15 @@ object Cli {
                 tail,
                 positionArgs,
                 maxFiles,
+                skipFiles,
                 downloadPolicy.copy(delaySeconds = parsed)
               )
           }
         case arg :: tail =>
-          loop(tail, positionArgs :+ arg, maxFiles, downloadPolicy)
+          loop(tail, positionArgs :+ arg, maxFiles, skipFiles, downloadPolicy)
       }
 
-    loop(args, Vector.empty, None, DefaultDownloadPolicy)
+    loop(args, Vector.empty, None, 0, DefaultDownloadPolicy)
   }
 
   private def countryPathKey(country: String): String = {
@@ -453,12 +502,12 @@ object Cli {
 
   def usage: String =
     s"""Usage:
-       |  sbt "run [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
-       |  sbt "run robots [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
-       |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
+       |  sbt "run [paths_gz_url] [output_dir] [spark_master] [--skip-files N] [--max-files N]"
+       |  sbt "run robots [paths_gz_url] [output_dir] [spark_master] [--skip-files N] [--max-files N]"
+       |  sbt "run sitemaps [paths_gz_url] [output_dir] [spark_master] [--skip-files N] [--max-files N]"
        |  sbt "run local-sitemaps [robots_dir] [output_dir] [spark_master]"
        |  sbt "run filter-sitemaps [sitemaps_dir] [output_dir] [spark_master]"
-       |  sbt "run country-sitemaps <country> [paths_gz_url] [output_dir] [spark_master] [--max-files N]"
+       |  sbt "run country-sitemaps <country> [paths_gz_url] [output_dir] [spark_master] [--skip-files N] [--max-files N]"
        |  sbt "run local-country-sitemaps <country> [sitemaps_dir] [output_dir] [spark_master]"
        |  sbt "run download-sitemaps [sitemaps_dir] [output_dir] [spark_master] [download options]"
        |
@@ -483,6 +532,7 @@ object Cli {
        |
        |Options:
        |  --max-files N        limit robotstxt archive files read from the manifest
+       |  --skip-files N       skip this many robotstxt archive files before parsing
        |  --download-connect-timeout-seconds N
        |                       HTTP connect timeout for downloads
        |  --download-read-timeout-seconds N

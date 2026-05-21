@@ -25,11 +25,45 @@ class CliSuite extends munit.FunSuite {
     assertEquals(command.map(runConfig), Right(Some(5000)))
   }
 
+  test("parses skip files for explicit robots command") {
+    val command = Cli.parseArgs(
+      Array(
+        "robots",
+        "--skip-files=1000",
+        "https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz",
+        "target/commoncrawl-robots"
+      )
+    )
+
+    assertEquals(command.map(runConfigWithSkip), Right((None, 1000)))
+  }
+
+  test("parses skip files with max files") {
+    val command = Cli.parseArgs(
+      Array(
+        "robots",
+        "--skip-files",
+        "1000",
+        "--max-files",
+        "5000"
+      )
+    )
+
+    assertEquals(command.map(runConfigWithSkip), Right((Some(5000), 1000)))
+  }
+
   test("rejects non-positive max files") {
     val command = Cli.parseArgs(Array("robots", "--max-files", "0"))
 
     assert(command.isLeft)
     assert(command.left.exists(_.contains("positive integer")))
+  }
+
+  test("rejects negative skip files") {
+    val command = Cli.parseArgs(Array("robots", "--skip-files", "-1"))
+
+    assert(command.isLeft)
+    assert(command.left.exists(_.contains("non-negative integer")))
   }
 
   test("rejects max files on local sitemap commands") {
@@ -46,6 +80,14 @@ class CliSuite extends munit.FunSuite {
 
     assert(localCountryCommand.isLeft)
     assert(localCountryCommand.left.exists(_.contains("country-sitemaps")))
+  }
+
+  test("rejects skip files on local sitemap commands") {
+    val command =
+      Cli.parseArgs(Array("local-sitemaps", "--skip-files", "5000"))
+
+    assert(command.isLeft)
+    assert(command.left.exists(_.contains("only supported for robots")))
   }
 
   test("parses download sitemaps command") {
@@ -193,6 +235,12 @@ class CliSuite extends munit.FunSuite {
     command match {
       case CliCommand.Run(config) => config.maxFiles
       case CliCommand.ShowUsage   => None
+    }
+
+  private def runConfigWithSkip(command: CliCommand): (Option[Int], Int) =
+    command match {
+      case CliCommand.Run(config) => (config.maxFiles, config.skipFiles)
+      case CliCommand.ShowUsage   => fail("expected run config")
     }
 
   private def runConfigWithDownloadPolicy(

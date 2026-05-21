@@ -86,9 +86,14 @@ object LocalRobotsSitemapsPipeline {
           ): FileVisitResult = {
             visitedFiles += 1
 
-            if (attrs.isRegularFile && file.getFileName().toString.endsWith(
-                ".txt"
-              )) {
+            if (
+              attrs.isRegularFile && file
+                .getFileName()
+                .toString
+                .endsWith(
+                  ".txt"
+                )
+            ) {
               matchedRobotsFiles += 1
               queue.put(Some(file))
 
@@ -178,9 +183,12 @@ object LocalRobotsSitemapsPipeline {
         .asScala
         .filter(Files.isRegularFile(_))
         .filter(path =>
-          path.getFileName().toString.matches(
-            "part-\\d{5}(?:-\\d{5})?\\.sitemaps\\.tsv"
-          )
+          path
+            .getFileName()
+            .toString
+            .matches(
+              "part-\\d{5}(?:-\\d{5})?\\.sitemaps\\.tsv"
+            )
         )
         .foreach(Files.deleteIfExists)
     }
@@ -244,7 +252,8 @@ object LocalRobotsSitemapsPipeline {
       while (keepRunning) {
         queue.take() match {
           case Some(robotFile) =>
-            Try(Files.readAllBytes(robotFile)).map(RobotsTxtParser.parse) match {
+            Try(Files.readAllBytes(robotFile))
+              .map(RobotsTxtParser.parse) match {
               case scala.util.Success(robotsTxt) if robotsTxt.isValid =>
                 parsedFiles += 1
                 robotsTxt.sitemaps.distinct.foreach { sitemapUrl =>

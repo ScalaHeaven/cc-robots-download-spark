@@ -71,9 +71,9 @@ just application code.
   `robotstxt.paths.gz`. Supports the default robots pipeline and the `sitemaps`
   `local-sitemaps`, `filter-sitemaps`, `country-sitemaps`,
   `local-country-sitemaps`, and `download-sitemaps` subcommands.
-  Supports `--max-files N` for WARC-backed robots, sitemaps, and
-  country-sitemaps runs to cap manifest archive files before Spark downloads
-  begin. Supports
+  Supports `--skip-files N` and `--max-files N` for WARC-backed robots,
+  sitemaps, and country-sitemaps runs to skip and cap manifest archive files
+  before Spark downloads begin. Supports
   `--download-connect-timeout-seconds N`,
   `--download-read-timeout-seconds N`, and
   `--download-delay-seconds N` for controlled HTTP downloads.
@@ -112,7 +112,7 @@ sbt -Dsbt.batch=true compile
 sbt -Dsbt.batch=true test
 sbt -Dsbt.batch=true "run --help"
 sbt -Dsbt.batch=true "run https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots"
-sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --max-files 5000"
+sbt -Dsbt.batch=true "run robots https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-robots --skip-files 10000 --max-files 5000"
 sbt -Dsbt.batch=true "run sitemaps https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-17/robotstxt.paths.gz target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run local-sitemaps target/commoncrawl-robots target/commoncrawl-sitemaps"
 sbt -Dsbt.batch=true "run filter-sitemaps target/commoncrawl-sitemaps target/filtered-sitemaps"
@@ -313,6 +313,8 @@ The repository currently supports:
 - compiling and running a Scala 3 Spark app with sbt
 - downloading Common Crawl `robotstxt.paths.gz` manifests
 - streaming listed robotstxt WARC archives in parallel with Spark and sttp
+- skipping and capping manifest archive paths for WARC-backed runs before Spark
+  downloads begin
 - controlling HTTP download connect and read timeouts for sitemap downloads
 - applying a default one-second HTTP request delay across download commands
 - extracting robots.txt response payloads with jwarc

@@ -25,8 +25,9 @@ object CommonCrawlSitemapsPipeline {
         manifestUrl,
         config.downloadPolicy
       )
-    val archivePaths = config.maxFiles.fold(allArchivePaths) { maxFiles =>
-      allArchivePaths.take(maxFiles)
+    val skippedArchivePaths = allArchivePaths.drop(config.skipFiles)
+    val archivePaths = config.maxFiles.fold(skippedArchivePaths) { maxFiles =>
+      skippedArchivePaths.take(maxFiles)
     }
     val outputDir = Path.of(config.outputPath).toAbsolutePath.normalize()
     val outputDirString = outputDir.toString
@@ -55,6 +56,11 @@ object CommonCrawlSitemapsPipeline {
     config.maxFiles.foreach { maxFiles =>
       println(
         s"Limited manifest processing to $maxFiles robotstxt archive files"
+      )
+    }
+    if (config.skipFiles > 0) {
+      println(
+        s"Skipped ${config.skipFiles} robotstxt archive files before parsing"
       )
     }
     println(s"Parsed $parsedFiles usable robots.txt captures")
